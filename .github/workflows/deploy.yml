@@ -1,0 +1,249 @@
+name: Production Deployment
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment-dashboard
+  cancel-in-progress: false
+
+env:
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/web/dashboard' }}
+  COMPOSE_FILE: ${{ vars.COMPOSE_FILE || 'compose.yaml' }}
+  COMPOSE_PROJECT_NAME: ${{ vars.COMPOSE_PROJECT_NAME || 'cyenetic-dashboard' }}
+  APP_IMAGE_NAME: ${{ vars.APP_IMAGE_NAME || 'cyenetic-dashboard' }}
+  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'https://api.cyenetic.com' }}
+
+jobs:
+  checks:
+    name: Dashboard CI
+    uses: ./.github/workflows/nextjs.yml
+    with:
+      production_build: true
+
+  deploy:
+    name: Deploy Production
+    if: vars.ENABLE_DEPLOYMENT == 'true'
+    environment: production
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tested release
+        uses: actions/checkout@v4
+
+      - name: Configure deployment SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$RUNNER_TEMP/cyenetic-ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/cyenetic-ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/cyenetic-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/cyenetic-ssh/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/cyenetic-ssh/known_hosts"
+
+      - name: Archive and deploy exact commit on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          case "$VPS_PORT" in
+            ""|*[!0-9]*) echo "VPS_PORT must be numeric" >&2; exit 1 ;;
+          esac
+          case "$VPS_USER" in
+            ""|*[!A-Za-z0-9_-]*) echo "VPS_USER contains invalid characters" >&2; exit 1 ;;
+          esac
+
+          case "$DEPLOY_PATH" in
+            /opt/web/*)
+              ;;
+            *)
+              echo "DEPLOY_PATH must be one directory below /opt/web" >&2
+              exit 1
+              ;;
+          esac
+          deploy_directory="${DEPLOY_PATH#/opt/web/}"
+
+          case "$deploy_directory" in
+            ""|.|..|*/*|*[!A-Za-z0-9._-]*)
+              echo "DEPLOY_PATH must be one safe directory below /opt/web" >&2
+              exit 1
+              ;;
+          esac
+          case "$COMPOSE_FILE" in
+            ""|.|..|*[!A-Za-z0-9._-]*|*.yml.*|*.yaml.*)
+              echo "COMPOSE_FILE must be a safe YAML filename" >&2
+              exit 1
+              ;;
+            *.yml|*.yaml)
+              ;;
+            *)
+              echo "COMPOSE_FILE must end in .yml or .yaml" >&2
+              exit 1
+              ;;
+          esac
+          case "$COMPOSE_PROJECT_NAME" in
+            ""|[!a-z0-9]*|*[!a-z0-9_-]*) echo "COMPOSE_PROJECT_NAME must be a lowercase Docker Compose identifier" >&2; exit 1 ;;
+          esac
+          case "$APP_IMAGE_NAME" in
+            ""|*[!a-z0-9._-]*) echo "APP_IMAGE_NAME contains invalid characters" >&2; exit 1 ;;
+          esac
+          case "$NEXT_PUBLIC_API_URL" in
+            https://?*) ;;
+            *) echo "NEXT_PUBLIC_API_URL must be an HTTPS URL" >&2; exit 1 ;;
+          esac
+          case "$NEXT_PUBLIC_API_URL" in
+            *[!A-Za-z0-9:/.?\&=_+-]*) echo "NEXT_PUBLIC_API_URL contains unsafe characters" >&2; exit 1 ;;
+          esac
+          case "$COMMIT_SHA" in
+            *[!0-9a-f]*|"") echo "COMMIT_SHA must be hexadecimal" >&2; exit 1 ;;
+          esac
+          [ "${#COMMIT_SHA}" -eq 40 ] || {
+            echo "COMMIT_SHA must contain 40 characters" >&2
+            exit 1
+          }
+
+          release_archive="$RUNNER_TEMP/release-$COMMIT_SHA.tar.gz"
+          remote_archive="/tmp/release-$COMMIT_SHA.tar.gz"
+          remote_compose_env="/tmp/$COMPOSE_PROJECT_NAME-$COMMIT_SHA.env"
+          remote_dotenv_backup="/tmp/$COMPOSE_PROJECT_NAME-$COMMIT_SHA-dotenv"
+          remote_production_env_backup="/tmp/$COMPOSE_PROJECT_NAME-$COMMIT_SHA-production-env"
+
+          tar -czf "$release_archive" \
+            --exclude=".git" \
+            -C "$GITHUB_WORKSPACE" .
+
+          scp -F /dev/null \
+            -i "$RUNNER_TEMP/cyenetic-ssh/id_ed25519" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/cyenetic-ssh/known_hosts" \
+            -P "$VPS_PORT" \
+            "$release_archive" \
+            "$VPS_USER@$VPS_HOST:$remote_archive"
+
+          ssh -F /dev/null \
+            -i "$RUNNER_TEMP/cyenetic-ssh/id_ed25519" \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/cyenetic-ssh/known_hosts" \
+            -p "$VPS_PORT" \
+            "$VPS_USER@$VPS_HOST" \
+            "set -eu
+              trap 'rm -f \"$remote_archive\" \"$remote_compose_env\" \"$remote_dotenv_backup\" \"$remote_production_env_backup\"' EXIT
+              [ -w /opt/web ] || {
+                echo 'VPS_USER must own or be able to write /opt/web' >&2
+                exit 1
+              }
+              docker info >/dev/null 2>&1 || {
+                echo 'VPS_USER cannot access Docker; add it to the docker group and reconnect' >&2
+                exit 1
+              }
+              docker network inspect traefik-net >/dev/null 2>&1 || {
+                echo 'Required external Docker network traefik-net does not exist' >&2
+                exit 1
+              }
+
+              [ ! -r '$DEPLOY_PATH/.env' ] || cp -p '$DEPLOY_PATH/.env' '$remote_dotenv_backup'
+              [ ! -r '$DEPLOY_PATH/.env.production' ] || cp -p '$DEPLOY_PATH/.env.production' '$remote_production_env_backup'
+
+              rm -rf -- '$DEPLOY_PATH'
+              mkdir -p '$DEPLOY_PATH'
+
+              tar -xzf '$remote_archive' -C '$DEPLOY_PATH'
+              [ ! -f '$remote_dotenv_backup' ] || cp -p '$remote_dotenv_backup' '$DEPLOY_PATH/.env'
+              [ ! -f '$remote_production_env_backup' ] || cp -p '$remote_production_env_backup' '$DEPLOY_PATH/.env.production'
+              printf '%s\n' \
+                'APP_IMAGE_NAME=$APP_IMAGE_NAME' \
+                'APP_IMAGE_TAG=$COMMIT_SHA' \
+                'COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME' \
+                'DEPLOYMENT_VERSION=$COMMIT_SHA' \
+                'NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL' \
+                > '$remote_compose_env'
+
+              cd '$DEPLOY_PATH'
+              docker compose --env-file '$remote_compose_env' \
+                -f '$COMPOSE_FILE' build app
+
+              stale_container_ids=\$(
+                docker ps -aq \
+                  --filter 'label=com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+                  --filter 'label=com.docker.compose.service=app' \
+                  --filter status=created
+                docker ps -aq \
+                  --filter 'label=com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+                  --filter 'label=com.docker.compose.service=app' \
+                  --filter status=exited
+                docker ps -aq \
+                  --filter 'label=com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+                  --filter 'label=com.docker.compose.service=app' \
+                  --filter status=dead
+              )
+              [ -z \"\$stale_container_ids\" ] || docker rm \$stale_container_ids
+
+              old_container_ids=\$(docker ps -q \
+                --filter 'label=com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+                --filter 'label=com.docker.compose.service=app')
+              old_count=\$(printf '%s\n' \"\$old_container_ids\" | awk 'NF { count++ } END { print count + 0 }')
+              target_count=\$((old_count + 1))
+
+              docker compose --env-file '$remote_compose_env' \
+                -f '$COMPOSE_FILE' up -d --no-recreate \
+                --scale app=\"\$target_count\"
+
+              all_container_ids=\$(docker ps -aq \
+                --filter 'label=com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+                --filter 'label=com.docker.compose.service=app')
+              new_container_ids=''
+              for container_id in \$all_container_ids; do
+                case \" \$old_container_ids \" in
+                  *\" \$container_id \"*) ;;
+                  *) new_container_ids=\"\$new_container_ids \$container_id\" ;;
+                esac
+              done
+              [ -n \"\$new_container_ids\" ] || {
+                echo 'Compose did not create a new application replica' >&2
+                exit 1
+              }
+
+              for container_id in \$new_container_ids; do
+                attempts=0
+                health='starting'
+                while [ \"\$attempts\" -lt 60 ]; do
+                  health=\$(docker inspect --format \
+                    '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+                    \"\$container_id\")
+                  [ \"\$health\" = healthy ] && break
+                  case \"\$health\" in
+                    exited|dead)
+                      break
+                      ;;
+                  esac
+                  attempts=\$((attempts + 1))
+                  sleep 2
+                done
+                [ \"\$health\" = healthy ] || {
+                  echo \"New application replica failed health checks: \$container_id\" >&2
+                  docker logs --tail 100 \"\$container_id\" >&2 || true
+                  docker rm -f \$new_container_ids >/dev/null 2>&1 || true
+                  exit 1
+                }
+              done
+
+              sleep 5
+              if [ -n \"\$old_container_ids\" ]; then
+                docker stop --time 30 \$old_container_ids
+                docker rm \$old_container_ids
+              fi
+
+              echo 'Deployment healthy'"

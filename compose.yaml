@@ -1,0 +1,20 @@
+services:
+  app:
+    image: ${APP_IMAGE_NAME:-cyenetic-dashboard}:${APP_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.cyenetic.com}
+    restart: unless-stopped
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.rule=Host(`admin.cyenetic.com`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.entrypoints=websecure"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.loadbalancer.server.port=3000"
+networks:
+  traefik-net:
+    external: true
