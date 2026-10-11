@@ -1,3 +1,19 @@
+# Validation record — 2026-10-11 (full admin design)
+
+Local checks on the `claude/admin-dashboard-v675ko` branch with Node.js and the locked dependencies. These are observed local results, not claims about remote CI or a deployment.
+
+| Check | Result |
+| --- | --- |
+| ESLint | Passed |
+| Architecture boundaries and strict TypeScript | Passed |
+| Production build | Passed |
+| Vitest | 19 tests passed (content editor, CVSS 3.1 known vectors, rounding and severity bands) |
+| Playwright | 8 scenarios passed on desktop Chromium and mobile Pixel 7, twice in a row |
+
+The browser scenarios cover sign-in with a wrong then a correct emailed code, creating and publishing a service domain with a sub-domain, sign-out, twelve workspaces rendering without page-level horizontal scroll, and the "API module not connected" state. They mock the HTTP boundary. No real email was sent, because the backend endpoints and SMTP delivery do not exist yet.
+
+---
+
 # Validation record — 2026-10-03
 
 Validation used Node.js 24 locally and the production Node.js 22 Alpine Docker build. These are observed local checks, not claims that remote GitHub jobs or a VPS deployment have run.

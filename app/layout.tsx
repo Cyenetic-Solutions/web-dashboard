@@ -1,15 +1,19 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { connection } from 'next/server';
+import { headers } from 'next/headers';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { ThemeProvider } from '@/providers/ThemeProvider';
+import { themeKey } from '@/providers/theme';
 import DashboardShell from '@/features/navigation/DashboardShell';
 import CustomCursor from '@/components/CustomCursor';
 import './globals.css';
 
 /** Administrative app is never indexed by search engines. */
-export const metadata: Metadata = { title: 'Cyenetic Control', description: 'Cyenetic staff operations', robots: { index: false, follow: false }, icons: { icon: '/favicon.svg' } };
-/** Dynamic rendering lets Next.js apply the per-request script nonce. */
+export const metadata: Metadata = { title: 'Cyenetic Admin', description: 'Cyenetic staff operations', robots: { index: false, follow: false }, icons: { icon: '/favicon.svg' } };
+const themeScript = `try{if(localStorage.getItem('${themeKey}')==='light')document.documentElement.dataset.theme='light'}catch(e){}`;
+/** Dynamic rendering applies the per-request nonce, including to the pre-paint theme script. */
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  await connection();
-  return <html lang="en"><body className="min-h-screen bg-cye-black font-sans text-cye-white antialiased"><CustomCursor /><AuthProvider><DashboardShell>{children}</DashboardShell></AuthProvider></body></html>;
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  return <html lang="en" suppressHydrationWarning><head><script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
+    <body className="min-h-screen bg-canvas font-sans text-ink antialiased"><CustomCursor /><ThemeProvider><AuthProvider><DashboardShell>{children}</DashboardShell></AuthProvider></ThemeProvider></body></html>;
 }

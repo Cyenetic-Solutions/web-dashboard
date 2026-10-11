@@ -14,7 +14,7 @@ Adapted from the frontend's reusable CI + main-branch SSH archive deployment. No
 
 The deployment user must own the chosen directory under `/opt/web` and access Docker without sudo. Provision the external `traefik-net` network and existing Traefik TLS resolver. Configure DNS for `admin.cyenetic.com`. No application host port is published. Keep dashboard access behind Cloudflare Access; TLS/HSTS are edge responsibilities.
 
-The image compiles with demo login disabled. The API URL is public configuration, never a secret. Configure the identity provider before staff access; token-entry bootstrap is supplied, not a full OIDC redirect flow.
+The image compiles with demo login disabled. The API URL is public configuration, never a secret. Before staff access, the API must serve the email-code sign-in endpoints and have SMTP configured ([contract](AUTH_EMAIL_OTP.md)), and allow this origin with credentialed CORS.
 
 ## Release behavior and recovery
 

@@ -6,5 +6,5 @@ import { kindSchema } from '@/services/content.schema';
 export default async function ContentPage({ params }: { params: Promise<{ kind: string }> }) {
   const result = kindSchema.safeParse((await params).kind);
   if (!result.success) notFound();
-  return <StaffGate><ContentFeature key={result.data} kind={result.data} /></StaffGate>;
+  return <StaffGate permission="content:read"><ContentFeature key={result.data} kind={result.data} /></StaffGate>;
 }

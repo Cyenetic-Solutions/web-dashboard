@@ -1,4 +1,4 @@
-import StaffGate from '@/components/StaffGate';
-import AuditFeature from '@/features/governance/AuditFeature';
-/** Composition entry for the privileged audit workspace. */
-export default function GovernancePage() { return <StaffGate><AuditFeature /></StaffGate>; }
+import { redirect } from 'next/navigation';
+
+/** Governance landing goes to the audit log. */
+export default function GovernancePage() { redirect('/governance/audit-log'); }
