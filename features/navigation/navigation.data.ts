@@ -6,7 +6,7 @@ export interface NavItem { href: string; title: string; permission: Permission; 
 export const navigation: { group: string; items: NavItem[] }[] = [
   { group: 'Overview', items: [{ href: '/', title: 'Dashboard', permission: 'dashboard:view', keywords: 'kpi home' }] },
   { group: 'Content Studio', items: [
-    { href: '/content/posts', title: 'Blog & advisories', permission: 'content:read', keywords: 'posts articles' },
+    { href: '/content/posts', title: 'Blog', permission: 'content:read', keywords: 'blog posts articles advisories' },
     { href: '/content/case-studies', title: 'Case studies', permission: 'content:read' },
     { href: '/content/reports', title: 'Reports & insights', permission: 'content:read', keywords: 'whitepapers pdf' },
     { href: '/content/team', title: 'Team', permission: 'content:read', keywords: 'people profiles' },
