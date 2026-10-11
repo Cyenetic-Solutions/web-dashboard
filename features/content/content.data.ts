@@ -10,3 +10,12 @@ export function newDocument(kind: ContentKind): ContentInput {
     case 'team': return { ...base, kind, data: { title: 'Full name', designation: 'Role', bio: 'Biography', image_url: null, linkedin_url: null, sort_order: 0 } };
   }
 }
+
+/** Display copy for each CMS collection. */
+export const contentMeta: Record<ContentKind, { title: string; singular: string; description: string }> = {
+  posts: { title: 'Blog & advisories', singular: 'post', description: 'Technical writeups and advisories. At most two published posts can be featured.' },
+  'case-studies': { title: 'Case studies', singular: 'case study', description: 'Engagement, challenge, scope and outcome, with client monikers and severity counters.' },
+  reports: { title: 'Reports & insights', singular: 'report', description: 'Whitepapers, pentest guides and checklists with download gates.' },
+  team: { title: 'Team', singular: 'profile', description: 'Management and engineering profiles shown on the public site.' },
+  services: { title: 'Service domains', singular: 'domain', description: 'Editable service catalog. Domains and sub-domains are records, so no fixed count and no deploy is needed.' },
+};

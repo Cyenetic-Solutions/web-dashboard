@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const text = z.string().trim().min(1).max(10000);
-export const slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100);
+export const slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers and single hyphens').max(100);
 export const kinds = ['services', 'posts', 'case-studies', 'reports', 'team'] as const;
 export const kindSchema = z.enum(kinds);
 export const statusSchema = z.enum(['draft', 'in_review', 'scheduled', 'published', 'archived']);
