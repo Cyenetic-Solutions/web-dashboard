@@ -8,9 +8,9 @@ These repositories establish the backend/dashboard foundations and one connected
 | Identity and RBAC | Server-side JWT/JWKS verification, issuer/audience/expiry/MFA checks; staff roles; explicit loopback demo. Dashboard: email + password then emailed 6-digit code screens, refresh-cookie session restore, forgot/reset password, invite acceptance, permission matrix | API endpoints for password login, SMTP code delivery, refresh rotation, logout, reset and invites ([contract](AUTH_EMAIL_OTP.md)); passkeys |
 | Content CMS | Validated create/read/update/archive; optimistic versions; immutable snapshots; draft/review/scheduled/published/archived statuses | Rich TipTap editor, scheduled publication worker, revision comparison/restoration and product-specific forms |
 | Dynamic services | Editable domain and subdomain arrays; published catalog endpoint compatible with frontend | Frontend environment wiring and coordinated schema evolution |
-| Posts | Required metadata/Markdown, maximum two published featured posts | Safe Markdown rendering integration, previews and assets |
-| Case studies | Four-part structure, client moniker flag and severity counters | Redaction review workflow, private video storage/processing and signed access |
-| Team | Profile metadata, designation, ordering and archive | Asset uploads and dedicated profile editor |
+| Posts | Dashboard: title, subtitle, cover image with alt text, publish date, Markdown editor with toolbar, shortcuts, inline images and safe preview, category, tags, author, SEO fields, featured flag (maximum two published) | Backend schema for the new fields; media upload endpoint; public-site rendering |
+| Case studies | Dashboard: title, tagline, cover, client moniker flag, company quote/overview/address/size/test types, Markdown requirement, 1–10 requirement points, 1–10 engagement items, up to 4 person quotes and up to 4 review links, all reorderable. Records in the old four-part shape load and drop the retired keys on the next save | Backend schema for the new shape; redaction review workflow, private video storage/processing and signed access |
+| Team | Dashboard: name, post, photo with alt text, department, bio, certifications, skills, LinkedIn and up to 5 other links, show-on-site switch, list reordering | Backend schema for the new fields; photo upload endpoint; public site honouring `show_on_site` |
 | Reports | Metadata and gated flag only | Private R2/S3 upload, scanning, thumbnails, expiring download tokens and lead verification |
 | Audit/persistence | PostgreSQL transactions, migrations, DB-level append-only audit trigger; Redis production rate limiting | Tenant RLS before client data, scoped DB provisioning, backups, retention and offsite/tamper-evident audit export |
 | Growth/CRM | Dashboard: inquiry Kanban with drag, keyboard moves, notes and conversion; report-download leads by domain; newsletter subscriber list and export | All `/admin/inquiries`, `/admin/report-leads` and `/admin/newsletter` API endpoints; inquiry intake, Turnstile, corporate email validation, webhooks |
@@ -24,6 +24,10 @@ The local demo uses memory and loses its records on restart. It is visibly marke
 ## Dashboard screens waiting on the API
 
 The dashboard now has screens for every admin.md module: overview, content and media, CRM, War-Room operations, governance and account. Most of them call endpoints that `cyenetic-backend` does not serve yet. Those screens show "API module not connected" instead of sample data. Only the CMS records, published catalog and legacy audit view work end to end today. Media upload, staff management, sessions, the dashboard summary and audit chain verification also need their API modules. See [DECISIONS.md](DECISIONS.md).
+
+## Blog, case study and team contract changes (2026-10-11)
+
+The dashboard now sends extra fields for posts, case studies and team members, and two new statuses, `on_hold` and `approved`, which must stay hidden from public reads like drafts. `cyenetic-backend` validates these records strictly, so its content schemas and public serializers must be updated to match `services/content.schema.ts` before saves of the new fields succeed against a real API. Delete in the list archives the record (status `archived`); there is no hard-delete endpoint. Image fields upload through `POST /api/v1/admin/media` when the API serves it; until then the editor says upload is not connected and accepts a pasted https URL.
 
 Published CMS responses are intentionally public. Do not put confidential findings, private client identity, credentials, or executable MDX in CMS content. Case-study monikers must be selected before publication; the current metadata flag cannot automatically redact prose.
 

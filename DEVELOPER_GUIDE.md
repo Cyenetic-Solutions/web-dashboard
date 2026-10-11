@@ -22,7 +22,7 @@ A screen whose endpoint answers 404 or 501 shows "API module not connected". Do 
 
 New records use version 0; responses update the optimistic version. A stale edit receives 409 and must be reloaded before retrying. Slugs become read-only after creation. Service data has its own slug, standards and subDomains array; it must match the record slug. No four-domain limit or build-time catalog whitelist exists.
 
-Content Editors can save draft/in_review records only. Security Auditors read CMS content. The backend always enforces these permissions independently. Client Viewer is not a staff session. Featured posts are limited to two published records by backend policy. Archiving hides a record publicly without deleting its history. `scheduled` currently stays hidden until an administrator explicitly publishes; no worker is running.
+Content Editors can save draft/in_review records only. Security Auditors read CMS content. The backend always enforces these permissions independently. Client Viewer is not a staff session. Featured posts are limited to two published records by backend policy. Archiving hides a record publicly without deleting its history; the list's Delete action archives after a confirmation. `on_hold` and `approved` are editorial states that stay private. Markdown previews use `components/Markdown.tsx`, which builds React elements only, drops non-web links and non-https images, and never renders raw HTML. `scheduled` currently stays hidden until an administrator explicitly publishes; no worker is running.
 
 ## Design rules
 

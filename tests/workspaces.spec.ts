@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { fixtures } from './fixtures';
 import { authHandlers, mockApi, navigate, signIn } from './mockApi';
 
-const pages: [string, string][] = [['Dashboard', 'Welcome back, Rafi'], ['Blog & advisories', 'Blog & advisories'], ['Media library', 'Media library'],
+const pages: [string, string][] = [['Dashboard', 'Welcome back, Rafi'], ['Blog', 'Blog'], ['Media library', 'Media library'],
   ['Inquiries', 'Inquiry pipeline'], ['Report downloads', 'Report downloads'], ['Newsletter', 'Newsletter'], ['Engagements', 'Engagements'],
   ['Findings', 'Findings'], ['Retests', 'Retests'], ['Certificates', 'Certificates'], ['Users & roles', 'Users & roles'], ['Audit log', 'Audit log']];
 

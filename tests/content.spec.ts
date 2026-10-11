@@ -23,7 +23,7 @@ test('staff can create and publish a service and keep mobile navigation usable',
   await page.getByLabel('Description').last().fill('Account and workload review');
   await page.getByLabel('Publication status').selectOption('published');
   await page.getByRole('button', { name: 'Save record' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toHaveText('Saved version 1 · published');
+  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toHaveText('Saved version 1 · Published');
   expect(records).toHaveLength(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('cms.png'), fullPage: true });

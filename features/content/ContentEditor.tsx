@@ -4,7 +4,7 @@ import Button from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Field';
 import { formatDate, label } from '@/components/format';
 import { ApiError } from '@/services/http';
-import { contentInput, statusSchema, type ContentInput } from '@/services/content.schema';
+import { contentInput, editorStatuses, statusSchema, type ContentInput } from '@/services/content.schema';
 import type { ContentRecord } from '@/services/api';
 import KindForm from './KindForm';
 
@@ -27,13 +27,13 @@ export default function ContentEditor({ initial, canPublish, onSave, onClose, up
     const parsed = contentInput.safeParse(input);
     if (!parsed.success) {
       setErrors(Object.fromEntries(parsed.error.issues.map((i) => [i.path.filter((p) => p !== 'data').join('.') || 'form', i.message])));
-      setMessage({ ok: false, text: 'Fix the highlighted fields before saving.' }); return;
+      setMessage({ ok: false, text: `Fix the highlighted fields before saving (${parsed.error.issues.length}).` }); return;
     }
     setErrors({}); setPending(true);
     try {
       const record = await onSave(parsed.data);
       setInput((current) => ({ ...current, version: record.version, status: record.status }));
-      setSaved(record.updatedAt); setDirty(false); setMessage({ ok: true, text: `Saved version ${record.version} · ${record.status}` });
+      setSaved(record.updatedAt); setDirty(false); setMessage({ ok: true, text: `Saved version ${record.version} · ${label(record.status)}` });
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) setMessage({ ok: false, text: 'Someone saved a newer version. Reload the record before saving again.' });
       else { if (error instanceof ApiError) setErrors(Object.fromEntries(Object.entries(error.fieldErrors).map(([k, v]) => [k, v[0] ?? 'Invalid']))); setMessage({ ok: false, text: error instanceof Error ? error.message : 'Save failed' }); }
@@ -43,7 +43,7 @@ export default function ContentEditor({ initial, canPublish, onSave, onClose, up
     const key = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void submit(); } };
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
   });
-  const statuses = statusSchema.options.filter((s) => canPublish || s === 'draft' || s === 'in_review' || s === input.status);
+  const statuses = statusSchema.options.filter((s) => canPublish || editorStatuses.includes(s) || s === input.status);
   return <form onSubmit={submit} noValidate className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
     <fieldset disabled={pending} className="min-w-0 border border-line bg-surface p-4 sm:p-6"><legend className="sr-only">Content</legend><KindForm input={input} onChange={change} errors={errors} /></fieldset>
     <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
@@ -51,7 +51,7 @@ export default function ContentEditor({ initial, canPublish, onSave, onClose, up
         <Input label="Slug" required className="font-mono" readOnly={input.version > 0} value={input.slug} onChange={(e) => setSlug(e.target.value)} error={errors.slug ?? errors.form}
           hint={input.version > 0 ? 'Slugs are locked after the first save.' : 'Lowercase letters, numbers and hyphens.'} wrapperClass="clear-both" />
         <Select label="Publication status" value={input.status} onChange={(e) => change({ ...input, status: statusSchema.parse(e.target.value) })}
-          options={statuses.map((s) => ({ value: s, label: s }))} hint={canPublish ? 'Scheduled stays hidden until published; no scheduler runs yet.' : 'Content Editors save drafts and send them for review.'} />
+          options={statuses.map((s) => ({ value: s, label: label(s) }))} hint={canPublish ? 'Only Published is public. On hold, Approved and Scheduled stay hidden; no scheduler runs yet.' : 'Content Editors save drafts, put them on hold or send them for review.'} />
         <dl className="grid grid-cols-2 gap-3 border-t border-line pt-4 text-xs"><div><dt className="cye-label text-subtle">Version</dt><dd className="mt-1 font-mono">v{input.version}</dd></div>
           <div><dt className="cye-label text-subtle">Last saved</dt><dd className="mt-1 font-mono">{formatDate(saved, true)}</dd></div></dl>
         <Button type="submit" size="lg" loading={pending} className="w-full">Save record</Button>
