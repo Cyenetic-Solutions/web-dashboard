@@ -6,8 +6,8 @@ export default function DashboardKpis({ summary }: { summary: DashboardSummary }
   const tiles = [
     { label: 'Open inquiries', value: summary.openInquiries },
     { label: 'Active engagements', value: summary.activeEngagements },
-    { label: 'Open crit + high', value: summary.openCriticalHigh },
-    { label: 'Downloads · 30 d', value: summary.downloads30d, delta: summary.downloadsDeltaPct },
+    { label: 'Crit + high open', value: summary.openCriticalHigh },
+    { label: 'Downloads 30d', value: summary.downloads30d, delta: summary.downloadsDeltaPct },
     { label: 'Published posts', value: summary.publishedPosts },
     { label: 'Subscribers', value: summary.confirmedSubscribers },
   ].filter((t): t is { label: string; value: number; delta?: number | null } => t.value !== null);

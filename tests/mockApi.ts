@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test';
+import { expect, type Page, type Route } from '@playwright/test';
 
 /** Route handler result: JSON body with optional status. */
 export type Reply = { status?: number; json: unknown };
@@ -41,7 +41,10 @@ export async function signIn(page: Page) {
 }
 /** Opens a workspace from the sidebar, using the navigation drawer on small screens. */
 export async function navigate(page: Page, name: string) {
-  const menu = page.getByRole('button', { name: 'Open navigation' });
-  if (await menu.isVisible()) await menu.click();
-  await page.getByRole('navigation', { name: 'Workspaces' }).getByRole('link', { name, exact: true }).last().click();
+  const mobile = (page.viewportSize()?.width ?? 1280) < 1024;
+  const drawer = page.getByRole('dialog', { name: 'Navigation' });
+  if (mobile) { await page.getByRole('button', { name: 'Open navigation' }).click(); await expect(drawer).toBeVisible(); }
+  const link = (mobile ? drawer : page).getByRole('navigation', { name: 'Workspaces' }).getByRole('link', { name, exact: true });
+  if (mobile) { await link.focus(); await page.keyboard.press('Enter'); } else await link.click();
+  if (mobile) await expect(drawer).toBeHidden();
 }

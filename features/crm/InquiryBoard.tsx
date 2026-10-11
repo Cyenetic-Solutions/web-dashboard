@@ -32,12 +32,12 @@ export default function InquiryBoard({ board, canMove, onOpen, persist }: { boar
   return <>
     <div className="lg:hidden"><Tabs label="Pipeline stage" value={column} onChange={setColumn} tabs={inquiryStatuses.map((s) => ({ value: s, label: `${stageMeta[s].label} ${board[s].length}` }))} /></div>
     {error && <p role="alert" className="mt-3 text-sm text-danger">{error}</p>}
-    <div className="mt-4 lg:mt-0 lg:grid lg:grid-cols-6 lg:gap-3 lg:overflow-x-auto">
+    <div className="mt-4 lg:mt-0 lg:flex lg:gap-3 lg:overflow-x-auto lg:pb-2">
       {inquiryStatuses.map((status) => {
         const items = board[status];
         const total = items.reduce((sum, i) => sum + (Number(i.dealValue) || 0), 0);
         return <section key={status} aria-label={stageMeta[status].label} onDragOver={(e) => { if (canMove) e.preventDefault(); }} onDrop={() => drop(status)}
-          className={`${status === column ? 'block' : 'hidden'} min-w-0 border border-line bg-surface lg:block lg:min-w-[200px]`}>
+          className={`${status === column ? 'block' : 'hidden'} min-w-0 border border-line bg-surface lg:block lg:w-64 lg:shrink-0`}>
           <header className="flex items-center justify-between border-b border-line px-3 py-2.5"><h2 className="cye-label">{stageMeta[status].label} <span className="text-subtle">{items.length}</span></h2>
             <span className="font-mono text-[11px] text-muted">{money(total)}</span></header>
           <ol className="min-h-24 space-y-2 p-2">{items.map((item, index) => <li key={item.id} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.stopPropagation(); drop(status, index); }}>
