@@ -59,3 +59,12 @@ export function query(params: Record<string, string | number | boolean | undefin
   const text = search.toString();
   return text ? `?${text}` : '';
 }
+
+/** Downloads an authorized file (e.g. CSV export, audited server-side) as a Blob. */
+export async function requestBlob(path: string, token: string) {
+  let response: Response;
+  try { response = await fetch(`${apiBase}${path}`, { cache: 'no-store', credentials: 'omit', headers: { Authorization: `Bearer ${token}` } }); }
+  catch { throw new ApiError(0, 'The API could not be reached.', 'NETWORK'); }
+  if (!response.ok) throw new ApiError(response.status, response.status === 404 ? 'Export is not available on the connected API' : 'Export failed');
+  return response.blob();
+}
