@@ -10,23 +10,23 @@ All paths are under `/api/v1/auth`. Responses use the usual `{ data }` / `{ erro
 
 | Method and path | Body | Success `data` | Notes |
 | --- | --- | --- | --- |
-| `POST /login` | `{ email, password }` | `{ otpRequired: true, otpToken, deliveredTo, expiresInSeconds, resendAfterSeconds }` | Verify the password, create a challenge, email the code. `deliveredTo` is masked (`r***@cyenetic.com`). |
-| `POST /otp/verify` | `{ otpToken, code }` | `{ accessToken, expiresInSeconds? }` | Sets the HttpOnly refresh cookie. Consumes the challenge. |
-| `POST /otp/resend` | `{ otpToken }` | `{ deliveredTo, expiresInSeconds, resendAfterSeconds }` | Issues a new code and invalidates the previous one. |
+| `POST /login` | `{ email, password }` | `{ codeRequired: true, challengeId, maskedEmail, expiresAt, resendAvailableAt }` | Verify the password, create a challenge, email the code. `maskedEmail` is masked (`r***@cyenetic.com`); the timestamps are ISO 8601. |
+| `POST /login/verify` | `{ challengeId, code }` | `{ accessToken, expiresInSeconds? }` | Sets the HttpOnly refresh cookie. Consumes the challenge. |
+| `POST /login/resend` | `{ challengeId }` | same shape as `/login` | Issues a new code and invalidates the previous one. |
 | `POST /refresh` | none (cookie) | `{ accessToken, expiresInSeconds? }` | Rotates the refresh cookie on every use. |
 | `POST /logout` | none (cookie + bearer) | empty | Revokes the session and clears the cookie. |
 | `POST /password/forgot` | `{ email }` | empty | Always 202, whether or not the account exists. Emails a reset link. |
 | `POST /password/reset` | `{ token, password }` | empty | Revokes every session for the account. |
 | `POST /invite/accept` | `{ token, password }` | empty | Activates an invited account. Its next sign-in uses the email code. |
 
-The dashboard then calls `GET /api/v1/admin/session` with the bearer token to learn the staff role, name and email.
+The dashboard then calls `GET /api/v1/auth/me` with the bearer token. It returns `{ data: { id, role, email, fullName } }`; `SUPER_ADMIN`, `SECURITY_AUDITOR` and `CONTENT_EDITOR` map to the dashboard roles, and any other role is refused.
 
 ## Status codes the dashboard handles
 
 - `401 invalid_credentials` or `423 account_locked` on `/login`: one generic "Invalid email or password" message.
-- `401 invalid_code` on `/otp/verify`: "That code is incorrect". The person can retry.
-- `410 code_expired` on `/otp/verify`: the dashboard asks for a new code.
-- `429` on `/login` or `/otp/resend`: asks the person to wait. On `/otp/verify` it means the attempt limit was hit, and the person starts sign-in again. The resend button also waits out `resendAfterSeconds`.
+- `401 invalid_code` on `/login/verify`: "That code is incorrect". The person can retry.
+- `410 code_expired` on `/login/verify`: the dashboard asks for a new code.
+- `429` on `/login` or `/login/resend`: asks the person to wait. On `/otp/verify` it means the attempt limit was hit, and the person starts sign-in again. The resend button also waits until `resendAvailableAt`.
 - `401` on `/refresh`: treated as signed out, with no error shown.
 
 ## Security requirements for the API
@@ -34,7 +34,7 @@ The dashboard then calls `GET /api/v1/admin/session` with the bearer token to le
 - Generate codes with a CSPRNG, 6 digits, uniformly distributed.
 - Store only a hash of the code (HMAC-SHA-256 with a server secret, or Argon2id) bound to the challenge id, never the plain code.
 - Codes are single use and expire after 5 to 10 minutes. A new code invalidates the old one.
-- Allow at most 5 wrong attempts per challenge, then void it. Rate-limit `/login` and `/otp/resend` per account and per IP (Redis in production).
+- Allow at most 5 wrong attempts per challenge, then void it. Rate-limit `/login` and `/login/resend` per account and per IP (Redis in production).
 - Use a resend cooldown of about 30 to 60 seconds. Return it as `resendAfterSeconds`.
 - Compare codes in constant time. Return the same `/login` error for unknown accounts and wrong passwords.
 - The `otpToken` is opaque, random and short-lived. It grants nothing on its own.
