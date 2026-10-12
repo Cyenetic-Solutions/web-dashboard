@@ -18,5 +18,5 @@ export default function LoginFlow() {
   async function finish(token: string) { await signIn(token); router.replace(target); }
   return pending
     ? <OtpStep challenge={pending.challenge} email={pending.email} onVerified={finish} onRestart={() => setPending(null)} />
-    : <CredentialsStep onChallenge={(challenge, email) => setPending({ challenge, email })} onDemoToken={finish} />;
+    : <CredentialsStep onChallenge={(challenge, email) => setPending({ challenge, email })} />;
 }

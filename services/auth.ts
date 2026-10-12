@@ -7,24 +7,32 @@ export const emailSchema = z.email('Enter a valid work email').trim().toLowerCas
 /** Staff password policy mirrored from the API (server remains authoritative). */
 export const passwordSchema = z.string().min(12, 'Use at least 12 characters').max(256);
 
-const challengeSchema = z.object({ otpRequired: z.literal(true), otpToken: z.string().min(1),
-  deliveredTo: z.string(), expiresInSeconds: z.number().int().positive(), resendAfterSeconds: z.number().int().nonnegative() });
+/** Raw email-code challenge as returned by the API (absolute timestamps, opaque challenge id). */
+const apiChallengeSchema = z.object({ codeRequired: z.literal(true), challengeId: z.string().min(1),
+  expiresAt: z.string(), resendAvailableAt: z.string(), maskedEmail: z.string() });
 /** Pending email-OTP challenge: the opaque token identifies it; the code itself only exists in the email. */
-export type OtpChallenge = z.infer<typeof challengeSchema>;
+export interface OtpChallenge { otpToken: string; deliveredTo: string; expiresInSeconds: number; resendAfterSeconds: number }
+/** Converts the API's absolute expiry/resend timestamps into the countdown seconds the UI consumes. */
+function toChallenge(raw: z.infer<typeof apiChallengeSchema>): OtpChallenge {
+  const now = Date.now();
+  const secondsUntil = (iso: string) => Math.max(0, Math.round((Date.parse(iso) - now) / 1000));
+  return { otpToken: raw.challengeId, deliveredTo: raw.maskedEmail,
+    expiresInSeconds: Math.max(1, secondsUntil(raw.expiresAt)), resendAfterSeconds: secondsUntil(raw.resendAvailableAt) };
+}
 const tokenSchema = z.object({ accessToken: z.string().min(1), expiresInSeconds: z.number().int().positive().optional() });
 const authCookie = { credentials: 'include' as const, headers: { 'X-Requested-With': 'cyenetic-admin' } };
 
 /** Step 1: verifies email + password; the API then emails a one-time code over SMTP. */
 export async function startLogin(email: string, password: string) {
-  return challengeSchema.parse(await request('/api/v1/auth/login', { method: 'POST', body: { email, password } }));
+  return toChallenge(apiChallengeSchema.parse(await request('/api/v1/auth/login', { method: 'POST', body: { email, password } })));
 }
 /** Step 2: exchanges the emailed code for an access token; the API sets the HttpOnly refresh cookie. */
 export async function verifyOtp(otpToken: string, code: string) {
-  return tokenSchema.parse(await request('/api/v1/auth/otp/verify', { method: 'POST', body: { otpToken, code }, ...authCookie }));
+  return tokenSchema.parse(await request('/api/v1/auth/login/verify', { method: 'POST', body: { challengeId: otpToken, code }, ...authCookie }));
 }
 /** Requests a fresh code for the same challenge, subject to server-side cooldown and rate limits. */
 export async function resendOtp(otpToken: string) {
-  return challengeSchema.omit({ otpRequired: true, otpToken: true }).parse(await request('/api/v1/auth/otp/resend', { method: 'POST', body: { otpToken } }));
+  return toChallenge(apiChallengeSchema.parse(await request('/api/v1/auth/login/resend', { method: 'POST', body: { challengeId: otpToken } })));
 }
 /** Restores a session from the HttpOnly refresh cookie (rotated server-side on every use). */
 export async function refreshSession() {
