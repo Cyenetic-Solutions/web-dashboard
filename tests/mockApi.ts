@@ -16,17 +16,20 @@ export async function mockApi(page: Page, handle: (method: string, path: string,
     return route.fulfill({ status: reply.status ?? 200, headers, json: reply.json });
   });
 }
-/** Standard staff sign-in handlers: no refresh cookie, password accepted, emailed code 123456. */
-export function authHandlers(role = 'Super Admin') {
+/** Standard staff sign-in handlers mirroring the live API: no refresh cookie, password accepted, emailed code 123456. */
+export function authHandlers(role = 'SUPER_ADMIN') {
   return (method: string, path: string, body: unknown): Reply | undefined => {
+    const inSeconds = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString();
+    const challenge = () => ({ codeRequired: true, challengeId: 'challenge-1', maskedEmail: 'a***@cyenetic.com', expiresAt: inSeconds(300), resendAvailableAt: inSeconds(30) });
     if (path === '/api/v1/auth/refresh') return { status: 401, json: { error: { code: 'UNAUTHENTICATED', message: 'No session' } } };
-    if (path === '/api/v1/auth/login') return { json: { otpRequired: true, otpToken: 'challenge-1', deliveredTo: 'a***@cyenetic.com', expiresInSeconds: 300, resendAfterSeconds: 30 } };
-    if (path === '/api/v1/auth/otp/verify') {
+    if (path === '/api/v1/auth/login') return { json: challenge() };
+    if (path === '/api/v1/auth/login/resend') return { json: challenge() };
+    if (path === '/api/v1/auth/login/verify') {
       const code = typeof body === 'object' && body !== null && 'code' in body ? body.code : null;
       return code === '123456' ? { json: { accessToken: 'access-1', expiresInSeconds: 900 } } : { status: 401, json: { error: { code: 'OTP_INVALID', message: 'Invalid code' } } };
     }
     if (path === '/api/v1/auth/logout') return { json: { ok: true } };
-    if (path === '/api/v1/admin/session') return { json: { sub: 'staff-1', role, amr: ['pwd', 'otp'], email: 'analyst@cyenetic.com', name: 'Rafi Analyst' } };
+    if (path === '/api/v1/auth/me') return { json: { data: { id: 'staff-1', role, email: 'analyst@cyenetic.com', fullName: 'Rafi Analyst' } } };
     return undefined;
   };
 }

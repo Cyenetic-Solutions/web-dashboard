@@ -17,9 +17,9 @@ test('sign-in requires the emailed one-time code after the password', async ({ p
   await page.getByLabel('Digit 1').fill('9');
   await page.keyboard.type('99999');
   await expect(page.getByText('That code is incorrect')).toBeVisible();
-  expect(calls).not.toContain('/api/v1/admin/session');
+  expect(calls).not.toContain('/api/v1/auth/me');
   await page.getByLabel('Digit 1').fill('1');
   await page.keyboard.type('23456');
   await expect(page).toHaveURL('http://localhost:3101/');
-  expect(calls).toContain('/api/v1/admin/session');
+  expect(calls).toContain('/api/v1/auth/me');
 });
