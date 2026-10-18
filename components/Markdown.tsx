@@ -1,10 +1,11 @@
 /* eslint-disable @next/next/no-img-element -- previews show editor-supplied https URLs; next/image would need every host allow-listed. */
 import type { ReactNode } from 'react';
+import { isImageUrl } from '@/services/content.schema';
 
 /** Only web and mail links are rendered; anything else (javascript:, data:) becomes plain text. */
 export function safeHref(url: string) { return /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url.trim()) ? url.trim() : null; }
-/** Images must come from an https origin. */
-export function safeImage(url: string) { return /^https:\/\//i.test(url.trim()) ? url.trim() : null; }
+/** Images must come from an https origin (or local MinIO during development). */
+export function safeImage(url: string) { return isImageUrl(url.trim()) ? url.trim() : null; }
 
 const inlinePattern = /(`[^`]+`)|!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|~~([^~]+)~~/g;
 

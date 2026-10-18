@@ -5,7 +5,7 @@ export function proxy(request: NextRequest) {
   const api = new URL(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').origin;
   const dev = process.env.NODE_ENV !== 'production';
   const policy = ["default-src 'self'", `script-src 'self' 'nonce-${nonce}' ${dev ? "'unsafe-eval'" : ''}`,
-    "style-src 'self' 'unsafe-inline'", "img-src 'self' data: https:", "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'", `img-src 'self' data: https: ${dev ? 'http://localhost:* http://127.0.0.1:*' : ''}`, "font-src 'self' data:",
     `connect-src 'self' ${api} ${dev ? 'ws: wss:' : ''}`, "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'", "form-action 'self'"].join('; ');
   const headers = new Headers(request.headers);
   headers.set('x-nonce', nonce);

@@ -10,3 +10,4 @@ test-results/
 next-env.d.ts
 *.log
 .DS_Store
+.dev-data/

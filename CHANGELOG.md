@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-18
+
+- `./run.sh` now starts the whole local stack: Mailpit and MinIO in Docker, a local dev API on :4000 and the dashboard on :3000. It creates `.env` from `.env.example` with random local secrets and prints the seeded sign-in accounts.
+- Added `dev-api/`, a loopback-only API that serves the dashboard's contracts (email-code sign-in, CMS, CRM, engagements, findings, retests, media, users, audit log, account) so pages no longer fail with "API could not be reached" or "not connected". Report PDFs and certificates still return 501.
+- `API_MODE=backend` runs a local `cyenetic-backend` checkout instead, with PostgreSQL and Redis.
+- Dev-only: image fields and CSP accept local MinIO `http://localhost` URLs; production builds stay https-only.
+- The dashboard dev and start scripts use port 3000.
+
 ## 2026-10-11
 
 - Rebuilt the Blog, Case Studies and Team editors. Blog posts gain subtitle, cover image, publish date, a Markdown editor with toolbar, inline images and safe preview, tags, author and SEO fields. Case studies follow the new company / requirements / engagement / quotes / reviews structure with reorderable repeatable groups. Team profiles gain photo upload, department, certifications, skills, extra links and a show-on-site switch.

@@ -7,7 +7,7 @@ import type { UploadedImage } from '@/components/ui/MarkdownEditor';
 import { useAuth } from '@/providers/AuthProvider';
 import { ApiError } from '@/services/http';
 import { uploadMedia, type purposes } from '@/services/media';
-import type { ImageRef } from '@/services/content.schema';
+import { isImageUrl, type ImageRef } from '@/services/content.schema';
 
 const types = ['image/jpeg', 'image/png', 'image/webp'];
 /** Client-side size ceiling; the API re-checks type (magic bytes) and size. */
@@ -23,7 +23,7 @@ export function ImageUploadProvider({ children }: { children: ReactNode }) {
   const upload = useCallback<Uploader>(async (file, purpose) => {
     try {
       const asset = await call((token) => uploadMedia(file, purpose, token, () => undefined));
-      if (!asset.url?.startsWith('https://')) throw new Error('The API stored the image but returned no public https URL.');
+      if (!asset.url || !isImageUrl(asset.url)) throw new Error('The API stored the image but returned no public https URL.');
       return { url: asset.url, alt: asset.altText ?? file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ') };
     } catch (error) {
       if (error instanceof ApiError && (error.unavailable || error.status === 0)) throw new Error('Image upload is not connected to the API yet. Paste an https image URL instead.');

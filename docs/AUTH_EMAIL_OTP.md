@@ -1,6 +1,6 @@
 # Staff sign-in: email one-time code contract
 
-The dashboard signs staff in with email and password, then a 6-digit code **emailed by the API over SMTP**. No authenticator app is used. The dashboard implements its half of this flow (`services/auth.ts`, `features/auth/`). The API half is **not implemented yet**: until `cyenetic-backend` ships these endpoints, real sign-in fails and only the loopback demo works locally.
+The dashboard signs staff in with email and password, then a 6-digit code **emailed by the API over SMTP**. No authenticator app is used. The dashboard implements its half of this flow (`services/auth.ts`, `features/auth/`). The API half is **not implemented yet**: until `cyenetic-backend` ships these endpoints, use `./run.sh`: its local dev API implements this contract and delivers codes to Mailpit (http://localhost:8025).
 
 The dashboard never generates, sees or sends the code. It only forwards what the person types.
 

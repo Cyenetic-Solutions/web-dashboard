@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contentInput } from './content.schema';
+import { contentInput, isImageUrl } from './content.schema';
 
 const caseStudy = (data: Record<string, unknown>) => ({ kind: 'case-studies', slug: 'fintech-app', status: 'draft', version: 1, data });
 const complete = {
@@ -44,5 +44,16 @@ describe('post contract', () => {
     expect(parse({ tags: Array.from({ length: 11 }, (_, i) => `t${i}`) })).toBe(false);
     expect(parse({ cover_image: { url: 'https://cdn.example.com/a.png', alt: '' } })).toBe(false);
     expect(parse({ cover_image: { url: 'https://cdn.example.com/a.png', alt: 'Diagram' }, publish_date: '2026-10-11' })).toBe(true);
+  });
+});
+
+describe('isImageUrl', () => {
+  it('accepts https and, outside production, local MinIO URLs only', () => {
+    expect(isImageUrl('https://cdn.example.com/a.png')).toBe(true);
+    expect(isImageUrl('http://localhost:9000/cyenetic-public/blog-cover/a.png')).toBe(true);
+    expect(isImageUrl('http://127.0.0.1:9000/a.png')).toBe(true);
+    expect(isImageUrl('http://evil.example/a.png')).toBe(false);
+    expect(isImageUrl('http://localhost.evil.example/a.png')).toBe(false);
+    expect(isImageUrl('javascript:alert(1)')).toBe(false);
   });
 });

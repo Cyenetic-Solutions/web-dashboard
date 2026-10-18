@@ -11,6 +11,8 @@
 - `services/`: `http.ts` transport and error envelope, one Zod-validated adapter per module, `permissions.ts` RBAC matrix and the tested `cvss.ts`. Components never fetch directly.
 - `tests/`: desktop/mobile Playwright scenarios; unit tests are colocated with their features.
 - `proxy.ts`: per-request nonce/CSP and private cache policy; no API authorization is delegated to it.
+- `dev-api/`: local-only Node API used by `./run.sh` (JSON-file store, SMTP to Mailpit, S3 to MinIO). It reuses `services/content.schema.ts`, `permissions.ts`, `cvss.ts` and `ops.schema.ts` so validation and RBAC match the dashboard. It is excluded from the Docker image and is not a production backend.
+- `compose.dev.yaml`: Mailpit and MinIO for local development, plus PostgreSQL and Redis under the `backend` profile.
 
 Public frontend, API and client portal remain separate repositories/applications. The dashboard consumes HTTP APIs and does not access PostgreSQL or host Next.js API routes.
 
@@ -30,7 +32,7 @@ The unmodified `design/index.html` is the design authority. `app/globals.css` pr
 
 ## Identity, CSP and runtime
 
-`NEXT_PUBLIC_API_URL` is public configuration and is compiled into client assets. Set it before building; never put secrets in NEXT_PUBLIC variables. `NEXT_PUBLIC_DEMO_MODE=true` only enables the local-demo UI; the backend independently refuses demo mode in production or on a non-loopback host. Production Docker builds set it false.
+`NEXT_PUBLIC_API_URL` is public configuration and is compiled into client assets. Set it before building; never put secrets in NEXT_PUBLIC variables. Outside production builds, image fields and the CSP also accept `http://localhost` / `http://127.0.0.1` URLs so uploads served by local MinIO preview and save; production builds accept https only.
 
 Sign-in is email + password, then a code the API emails over SMTP ([contract](docs/AUTH_EMAIL_OTP.md)). The dashboard never creates or sends the code. The access token stays in memory; the API's HttpOnly refresh cookie restores sessions, and a 401 triggers one shared refresh and a retry. Only the theme choice uses localStorage. A pre-paint nonced script applies the theme to avoid a flash. UI gates do not protect data; every private backend request requires authorization. Put the deployed dashboard behind Cloudflare Access as an additional control.
 
