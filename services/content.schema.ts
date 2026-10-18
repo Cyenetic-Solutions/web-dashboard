@@ -4,6 +4,13 @@ const text = z.string().trim().min(1).max(10000);
 const short = (max: number) => z.string().trim().min(1, 'Required').max(max);
 const optional = (max: number) => z.string().trim().max(max);
 const https = z.url().startsWith('https://', 'Use an https:// URL');
+/** Local MinIO (./run.sh) serves uploads from http://localhost; accepted only outside production builds. */
+const allowLoopbackHttp = process.env.NODE_ENV !== 'production';
+/** True for an https URL, or a loopback http URL during local development. */
+export function isImageUrl(url: string) {
+  return /^https:\/\//i.test(url) || (allowLoopbackHttp && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url));
+}
+const imageUrl = z.url().refine(isImageUrl, 'Use an https:// URL');
 export const slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers and single hyphens').max(100);
 export const kinds = ['services', 'posts', 'case-studies', 'reports', 'team'] as const;
 export const kindSchema = z.enum(kinds);
@@ -14,7 +21,7 @@ export const editorStatuses: readonly ContentStatus[] = ['draft', 'in_review', '
 export type ContentStatus = z.infer<typeof statusSchema>;
 
 /** Public image reference with required alt text. */
-export const imageSchema = z.object({ url: https, alt: short(200) }).strict();
+export const imageSchema = z.object({ url: imageUrl, alt: short(200) }).strict();
 export type ImageRef = z.infer<typeof imageSchema>;
 const image = imageSchema.nullable().default(null);
 const list = <T extends z.ZodType>(item: T, max: number) => z.array(item).max(max).default([]);
@@ -66,7 +73,7 @@ const report = z.object({ title: text, description: text, category: text, is_gat
 export const profileLinkSchema = z.object({ label: short(40), url: https }).strict();
 const team = z.object({
   title: short(120), designation: short(120), bio: text,
-  image_url: https.nullable(), image_alt: optional(200).default(''), linkedin_url: https.nullable(),
+  image_url: imageUrl.nullable(), image_alt: optional(200).default(''), linkedin_url: https.nullable(),
   department: optional(80).default(''), certifications: list(short(40), 15), skills: list(short(40), 10),
   links: list(profileLinkSchema, 5), show_on_site: z.boolean().default(true),
   sort_order: z.number().int().nonnegative(),

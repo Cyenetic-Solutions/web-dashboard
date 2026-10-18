@@ -8,17 +8,30 @@ Only the CMS slice works end to end with today's backend. Every other screen cal
 
 ## Run locally
 
-Requires Node.js 22 and npm. Start `cyenetic-backend` using its README, then:
+Requires Node.js 22 and Docker (Docker Desktop on macOS/Windows). One command starts everything:
 
 ```sh
-npm ci
-cp .env.example .env.local
-npm run dev
+./run.sh
 ```
 
-Open `http://localhost:3001/login`. Select **Use local demo** and enter the backend's `DEMO_LOGIN_KEY` from its `.env` (the example is `local-demo-change-this-key`). Create a service record, set its payload slug to match the record slug, and publish as the demo administrator. The backend public catalog now exposes it. Data in demo mode disappears when the API restarts.
+| Service | Address | What it is |
+| --- | --- | --- |
+| Dashboard | http://localhost:3000/login | This Next.js app |
+| API | http://localhost:4000 | The bundled local dev API in `dev-api/` |
+| Mailpit | http://localhost:8025 | Catches every email; sign-in codes, invites and reset links land here |
+| MinIO | http://localhost:9001 | Object storage for uploads (user `cyenetic`, password `S3_SECRET_KEY` in `.env`) |
 
-Real sign-in needs the backend's email-code endpoints and SMTP settings described in [AUTH_EMAIL_OTP.md](docs/AUTH_EMAIL_OTP.md); they are not implemented in the API yet. Access tokens stay in tab memory. Production builds disable the demo control.
+On first run the script copies `.env.example` to `.env`, fills in random local secrets and installs dependencies. Sign in with one of the seeded accounts from `.env`:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Super Admin | `admin@cyenetic.local` | `Cyenetic-Admin-2026!` |
+| Content Editor | `editor@cyenetic.local` | `Cyenetic-Editor-2026!` |
+| Security Auditor | `auditor@cyenetic.local` | `Cyenetic-Auditor-2026!` |
+
+Then open Mailpit, read the 6-digit code and type it in. Change the `DEV_*` values in `.env` and restart to use other accounts. `./run.sh stop` stops the Docker services, `./run.sh reset` also deletes local data, and `npm run dev:smoke` checks a running stack end to end.
+
+The dev API is **not** `cyenetic-backend`. It exists so the whole dashboard works on one machine: it keeps records in `.dev-data/store.json`, sends real email to Mailpit, stores real files in MinIO, binds to 127.0.0.1 only and refuses to start with `NODE_ENV=production`. Report PDFs and certificates are not implemented there, so those screens still say "API module not connected". To use a real `cyenetic-backend` checkout instead, set `API_MODE=backend` and `BACKEND_DIR` in `.env`; `run.sh` then also starts PostgreSQL and Redis and passes their URLs, SMTP and S3 settings to it. Seeding accounts into that backend is up to its own scripts.
 
 ## Checks
 
