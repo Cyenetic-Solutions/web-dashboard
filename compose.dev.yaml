@@ -1,4 +1,5 @@
 # Local development services started by ./run.sh. Never deploy this file.
+# Mailpit always starts; MinIO only with STORAGE_DRIVER=minio; PostgreSQL and Redis only with API_MODE=backend.
 # Every port binds to 127.0.0.1 so nothing is reachable from other machines.
 name: cyenetic-dev
 
@@ -16,8 +17,10 @@ services:
       - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
 
   minio:
-    # S3-compatible object storage for media uploads. Console: http://localhost:9001
+    # Optional S3-compatible object storage for uploads (STORAGE_DRIVER=minio). Console: http://localhost:9001
+    # By default the dev API saves uploads on disk instead, so this service only starts with the "minio" profile.
     # The official minio/minio image is no longer published on Docker Hub; pgsty/minio is a community build of the same server.
+    profiles: ["minio"]
     image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
     restart: unless-stopped
     command: server /data --console-address ":9001"

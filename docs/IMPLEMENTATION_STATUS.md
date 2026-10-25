@@ -23,7 +23,9 @@ The local demo uses memory and loses its records on restart. It is visibly marke
 
 ## Local dev API (2026-10-18)
 
-`./run.sh` starts `dev-api/`, a loopback-only stand-in that serves every dashboard contract except report PDF generation and certificates (both answer 501). It sends sign-in codes, invites and reset links through real SMTP to Mailpit, stores uploads in MinIO after magic-byte checks, keeps a SHA-256 hash-chained audit log and enforces the same role matrix. It is for development only: data is a JSON file, there is no malware scanning (uploads report `SKIPPED`), and it does not replace `cyenetic-backend`, which still needs the endpoints listed below.
+`./run.sh` starts `dev-api/`, a loopback-only stand-in that serves every dashboard contract except report PDF generation and certificates (both answer 501). It sends sign-in codes, invites and reset links through real SMTP to Mailpit, stores uploads after magic-byte checks on local disk (`.dev-data/uploads`, the default) or in MinIO (`STORAGE_DRIVER=minio`), keeps a SHA-256 hash-chained audit log and enforces the same role matrix. It is for development only: data is a JSON file, there is no malware scanning (uploads report `SKIPPED`), and it does not replace `cyenetic-backend`, which still needs the endpoints listed below.
+
+Every endpoint, with its request, response and required role, is listed in [api_doc.md](../api_doc.md).
 
 ## Dashboard screens waiting on the API
 

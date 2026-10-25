@@ -25,7 +25,8 @@ export function createRouter() {
       if (!found) continue;
       pathMatched = true;
       if (route.method !== method) continue;
-      const params = Object.fromEntries(route.keys.map((key, i) => [key, decodeURIComponent(found[i + 1])]));
+      let params;
+      try { params = Object.fromEntries(route.keys.map((key, i) => [key, decodeURIComponent(found[i + 1])])); } catch { throw badRequest('The URL is not correctly encoded.'); }
       return { handler: route.handler, params };
     }
     return { pathMatched };
@@ -45,11 +46,14 @@ export async function readBody(req, limit) {
   return Buffer.concat(chunks);
 }
 
-/** Parses a JSON body; empty bodies become `{}`. */
+/** Parses a JSON object body; empty bodies become `{}`, anything that is not an object is a 400. */
 export async function readJson(req) {
   const raw = await readBody(req, 2 * 1024 * 1024);
   if (raw.length === 0) return {};
-  try { return JSON.parse(raw.toString('utf8')); } catch { throw badRequest('The request body is not valid JSON.'); }
+  let parsed;
+  try { parsed = JSON.parse(raw.toString('utf8')); } catch { throw badRequest('The request body is not valid JSON.'); }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw badRequest('The request body must be a JSON object.');
+  return parsed;
 }
 
 export function parseCookies(header = '') {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-25
+
+- Security: updated Next.js 16.3.8 → 16.4.3 (critical remote-code-execution and denial-of-service advisories), React 19.2.8 → 19.3.1, Zod → 4.6.7, and the test stack to Vitest 5, Vite 8, `@vitejs/plugin-react` 6, jsdom 29 and jest-dom 7. `npm audit` now reports 0 vulnerabilities. ESLint stays on 9 and TypeScript on 6.0 until Next's lint plugins support newer majors. `vitest.config.ts` is now `vitest.config.mts` for Vite 8's ESM config loader.
+- `./run.sh` no longer needs MinIO. The dev API saves uploads on disk in `.dev-data/uploads` and serves them itself (private files only through 15-minute signed links). Set `STORAGE_DRIVER=minio` in `.env` to use MinIO as before; it now starts only in that case.
+- Fixed in the dev API: the overview's "Recent activity" feed showed every audit entry to every role; now roles without `audit:read` see only their own actions plus CMS and CRM changes. A JSON body that is not an object (e.g. `null`) and badly encoded URLs now get 400 instead of 500.
+- Added [api_doc.md](api_doc.md): every endpoint with method, request, response and required role.
+- `npm run dev:smoke` also checks private-file links, the activity-feed scoping and the new 400 responses.
+
 ## 2026-10-18
 
 - `./run.sh` now starts the whole local stack: Mailpit and MinIO in Docker, a local dev API on :4000 and the dashboard on :3000. It creates `.env` from `.env.example` with random local secrets and prints the seeded sign-in accounts.

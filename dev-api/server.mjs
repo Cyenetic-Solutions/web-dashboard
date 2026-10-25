@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createTokenIssuer, seedUsers } from './lib/auth.mjs';
 import { HttpError, cors, createRouter, readJson, sendError, sendJson } from './lib/http.mjs';
 import { sendMail } from './lib/mail.mjs';
-import { createS3 } from './lib/s3.mjs';
+import { createStorage } from './lib/storage.mjs';
 import { openStore } from './lib/store.mjs';
 import { authRoutes } from './routes/auth.mjs';
 import { contentRoutes } from './routes/content.mjs';
@@ -23,14 +23,20 @@ if (!['127.0.0.1', 'localhost', '::1'].includes(host)) { console.error('[dev-api
 if (!env.DEV_API_SECRET || env.DEV_API_SECRET.length < 32) { console.error('[dev-api] Set DEV_API_SECRET (32+ characters) in .env. ./run.sh generates one.'); process.exit(1); }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const port = Number(env.DEV_API_PORT ?? 4000);
+const storageDriver = (env.STORAGE_DRIVER ?? 'local').toLowerCase();
+if (!['local', 'minio'].includes(storageDriver)) { console.error(`[dev-api] STORAGE_DRIVER must be "local" or "minio", not "${env.STORAGE_DRIVER}".`); process.exit(1); }
 const config = {
-  port: Number(env.DEV_API_PORT ?? 4000),
+  port,
+  /** Address the browser uses to reach this API; local-disk upload URLs are built from it. */
+  publicUrl: (env.DEV_API_PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/+$/, ''),
   secret: env.DEV_API_SECRET,
   dashboardUrl: env.DASHBOARD_URL ?? 'http://localhost:3000',
   origins: (env.CORS_ORIGINS ?? env.DASHBOARD_URL ?? 'http://localhost:3000').split(',').map((o) => o.trim()).filter(Boolean),
   smtp: { host: env.SMTP_HOST ?? '127.0.0.1', port: Number(env.SMTP_PORT ?? 1025), from: env.SMTP_FROM ?? 'no-reply@cyenetic.local' },
   s3: { endpoint: env.S3_ENDPOINT ?? 'http://localhost:9000', region: env.S3_REGION ?? 'us-east-1', accessKey: env.S3_ACCESS_KEY ?? 'cyenetic', secretKey: env.S3_SECRET_KEY ?? '',
     publicBucket: env.S3_PUBLIC_BUCKET ?? 'cyenetic-public', privateBucket: env.S3_PRIVATE_BUCKET ?? 'cyenetic-private' },
+  storage: { driver: storageDriver, dir: path.resolve(root, env.DEV_API_DATA_DIR ?? '.dev-data', 'uploads') },
 };
 
 const store = openStore(path.resolve(root, env.DEV_API_DATA_DIR ?? '.dev-data'));
@@ -40,9 +46,9 @@ seedUsers(store, [
   { email: env.DEV_AUDITOR_EMAIL, password: env.DEV_AUDITOR_PASSWORD, fullName: env.DEV_AUDITOR_NAME ?? 'Dev Security Auditor', role: 'SECURITY_AUDITOR' },
 ]);
 const tokens = createTokenIssuer(store);
-const s3 = createS3(config.s3);
+const storage = createStorage(config);
 const mailer = (message) => sendMail(config.smtp, message);
-const deps = { store, config, tokens, mailer, s3 };
+const deps = { store, config, tokens, mailer, storage };
 
 const router = createRouter();
 router.get('/health', async () => ({ status: 'ok', service: 'cyenetic-dev-api' }));
@@ -57,10 +63,12 @@ const server = createServer(async (req, res) => {
     const found = router.match(req.method ?? 'GET', url.pathname);
     if (!found.handler) throw found.pathMatched ? new HttpError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed') : new HttpError(404, 'NOT_FOUND', 'Not found');
     let actor = null;
-    let csv = null;
-    const ctx = { req, res, url, params: found.params, json: () => readJson(req), actor: () => (actor ??= tokens.resolve(req)), csv: (text) => { csv = text; return text; } };
+    let raw = null;
+    const ctx = { req, res, url, params: found.params, json: () => readJson(req), actor: () => (actor ??= tokens.resolve(req)),
+      csv: (text) => { raw = { body: text, headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store' } }; return text; },
+      file: (body, headers) => { raw = { body, headers }; return body; } };
     const result = await found.handler(ctx);
-    if (csv !== null) { res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(csv); }
+    if (raw !== null) { res.writeHead(200, raw.headers); res.end(raw.body); }
     else sendJson(res, res.statusCode || 200, result);
     store.save();
   } catch (error) {
@@ -70,25 +78,9 @@ const server = createServer(async (req, res) => {
   }
 });
 
-/** Creates the buckets and the public-read policy, retrying while MinIO is still starting. */
-async function prepareStorage() {
-  for (let attempt = 1; attempt <= 20; attempt += 1) {
-    try {
-      await s3.ensureBucket(config.s3.publicBucket);
-      await s3.ensureBucket(config.s3.privateBucket);
-      await s3.allowPublicRead(config.s3.publicBucket);
-      console.log(`[dev-api] MinIO buckets ready (${config.s3.publicBucket}, ${config.s3.privateBucket})`);
-      return;
-    } catch (error) {
-      if (attempt === 20) console.error(`[dev-api] MinIO is not reachable at ${config.s3.endpoint}; uploads will fail until it is. ${error.message}`);
-      else await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-  }
-}
-
 server.listen(config.port, host, () => {
   console.log(`[dev-api] Listening on http://${host}:${config.port} (dashboard origin ${config.origins.join(', ')})`);
-  prepareStorage();
+  storage.prepare().then((message) => console.log(`[dev-api] ${message}`), (error) => console.error(`[dev-api] ${error.message}`));
 });
 const stop = () => { store.flush(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
 process.on('SIGINT', stop);

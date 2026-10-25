@@ -2,9 +2,10 @@
 #
 # run.sh — start the whole Cyenetic admin stack on your machine.
 #
-#   ./run.sh            Mailpit + MinIO (Docker), the API on :4000 and the dashboard on :3000
+#   ./run.sh            Mailpit (Docker), the API on :4000 and the dashboard on :3000.
+#                       Uploads are saved on disk in .dev-data/uploads. Set STORAGE_DRIVER=minio in .env to use MinIO instead.
 #   ./run.sh stop       Stop the Docker services (data is kept)
-#   ./run.sh reset      Stop everything and delete local data (dev API records, MinIO files, mail)
+#   ./run.sh reset      Stop everything and delete local data (dev API records, uploads, MinIO files, mail)
 #   ./run.sh build      Production build of the dashboard (Webpack)
 #   ./run.sh start      Serve that production build on :3000 (API and services still need ./run.sh)
 #
@@ -43,6 +44,9 @@ set +a
 PORT="${PORT:-3000}"
 DEV_API_PORT="${DEV_API_PORT:-4000}"
 API_MODE="${API_MODE:-devapi}"
+STORAGE_DRIVER="${STORAGE_DRIVER:-local}"
+case "$STORAGE_DRIVER" in local|minio) ;; *) fail "STORAGE_DRIVER must be local or minio (it is '$STORAGE_DRIVER')." ;; esac
+export STORAGE_DRIVER
 
 # --- Dependencies --------------------------------------------------------------
 if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
@@ -53,13 +57,16 @@ fi
 compose() {
   if docker compose version >/dev/null 2>&1; then docker compose -f compose.dev.yaml "$@";
   elif command -v docker-compose >/dev/null 2>&1; then docker-compose -f compose.dev.yaml "$@";
-  else fail "Docker Compose is required for Mailpit and MinIO. Install Docker Desktop (or set SKIP_DOCKER=1 if you run them yourself)."; fi
+  else fail "Docker Compose is required for Mailpit. Install Docker Desktop (or set SKIP_DOCKER=1 if you run Mailpit yourself)."; fi
 }
-profiles() { if [ "$API_MODE" = "backend" ]; then echo "--profile backend"; fi; }
+profiles() {
+  if [ "$STORAGE_DRIVER" = "minio" ]; then printf '%s ' --profile minio; fi
+  if [ "$API_MODE" = "backend" ]; then printf '%s ' --profile backend; fi
+}
 
 case "$MODE" in
-  stop)  compose --profile backend down; say "Docker services stopped. Data is kept."; exit 0 ;;
-  reset) compose --profile backend down -v; rm -rf .dev-data; say "Local data deleted."; exit 0 ;;
+  stop)  compose --profile minio --profile backend down; say "Docker services stopped. Data is kept."; exit 0 ;;
+  reset) compose --profile minio --profile backend down -v; rm -rf .dev-data; say "Local data deleted."; exit 0 ;;
   build) exec node node_modules/next/dist/bin/next build --webpack ;;
   start) exec node node_modules/next/dist/bin/next start --port "$PORT" ;;
   dev) ;;
@@ -73,9 +80,9 @@ done
 
 # --- Docker services -----------------------------------------------------------
 if [ "${SKIP_DOCKER:-0}" != "1" ]; then
-  command -v docker >/dev/null 2>&1 || fail "Docker is required for Mailpit and MinIO. Install Docker Desktop and start it."
+  command -v docker >/dev/null 2>&1 || fail "Docker is required for Mailpit (the inbox for sign-in codes). Install Docker Desktop and start it."
   docker info >/dev/null 2>&1 || fail "Docker is installed but not running. Start Docker Desktop, then run ./run.sh again."
-  say "Starting Docker services: Mailpit, MinIO$( [ "$API_MODE" = backend ] && echo ', PostgreSQL, Redis')"
+  say "Starting Docker services: Mailpit$( [ "$STORAGE_DRIVER" = minio ] && echo ', MinIO')$( [ "$API_MODE" = backend ] && echo ', PostgreSQL, Redis')"
   # shellcheck disable=SC2046
   compose $(profiles) up -d --wait
 fi
@@ -122,7 +129,7 @@ cat <<EOF
   Dashboard   ${DASHBOARD_URL}/login
   API         http://localhost:${DEV_API_PORT}
   Mail inbox  http://localhost:${MAILPIT_UI_PORT:-8025}   (sign-in codes arrive here)
-  MinIO       http://localhost:${MINIO_CONSOLE_PORT:-9001}   (user ${S3_ACCESS_KEY}, password = S3_SECRET_KEY in .env)
+  Uploads     $( [ "$STORAGE_DRIVER" = minio ] && echo "MinIO console http://localhost:${MINIO_CONSOLE_PORT:-9001} (user ${S3_ACCESS_KEY}, password = S3_SECRET_KEY in .env)" || echo "saved on disk in .dev-data/uploads (STORAGE_DRIVER=minio to use MinIO)")
 
   Sign in as  ${DEV_ADMIN_EMAIL} / ${DEV_ADMIN_PASSWORD}   (Super Admin)
               ${DEV_EDITOR_EMAIL} / ${DEV_EDITOR_PASSWORD}   (Content Editor)
