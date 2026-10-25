@@ -6,6 +6,7 @@
 - `./run.sh` no longer needs MinIO. The dev API saves uploads on disk in `.dev-data/uploads` and serves them itself (private files only through 15-minute signed links). Set `STORAGE_DRIVER=minio` in `.env` to use MinIO as before; it now starts only in that case.
 - Fixed in the dev API: the overview's "Recent activity" feed showed every audit entry to every role; now roles without `audit:read` see only their own actions plus CMS and CRM changes. A JSON body that is not an object (e.g. `null`) and badly encoded URLs now get 400 instead of 500.
 - Added [api_doc.md](api_doc.md): every endpoint with method, request, response and required role.
+- `run.sh` fixes: `./run.sh start` now starts Mailpit and the API too (before, it served only the dashboard, so nobody could sign in) and says to build first when there is no build; settings given on the command line (e.g. `STORAGE_DRIVER=minio ./run.sh`) now override `.env` instead of being ignored; the API health check no longer needs `curl`; no misleading "stopped" message when start-up fails early.
 - `npm run dev:smoke` also checks private-file links, the activity-feed scoping and the new 400 responses.
 
 ## 2026-10-18
