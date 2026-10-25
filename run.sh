@@ -7,7 +7,7 @@
 #   ./run.sh stop       Stop the Docker services (data is kept)
 #   ./run.sh reset      Stop everything and delete local data (dev API records, uploads, MinIO files, mail)
 #   ./run.sh build      Production build of the dashboard (Webpack)
-#   ./run.sh start      Serve that production build on :3000 (API and services still need ./run.sh)
+#   ./run.sh start      Same stack as ./run.sh, but the dashboard serves that production build (run ./run.sh build first)
 #
 # Settings live in .env (created from .env.example on first run). Sign-in accounts are the
 # DEV_*_EMAIL / DEV_*_PASSWORD values there; sign-in codes arrive in Mailpit at http://localhost:8025.
@@ -37,10 +37,13 @@ node -e '
   const next = text.replace(/^([A-Z0-9_]+)=generate-on-first-run$/gm, (_, key) => `${key}=${crypto.randomBytes(24).toString("hex")}`);
   if (next !== text) { fs.writeFileSync(".env", next); console.log("[run] Generated local secrets in .env"); }
 '
+# Load .env, but let variables already set in the shell win (e.g. STORAGE_DRIVER=minio ./run.sh).
+SHELL_ENV="$(export -p)"
 set -a
 # shellcheck disable=SC1091
 . ./.env
 set +a
+eval "$SHELL_ENV"
 PORT="${PORT:-3000}"
 DEV_API_PORT="${DEV_API_PORT:-4000}"
 API_MODE="${API_MODE:-devapi}"
@@ -68,11 +71,13 @@ case "$MODE" in
   stop)  compose --profile minio --profile backend down; say "Docker services stopped. Data is kept."; exit 0 ;;
   reset) compose --profile minio --profile backend down -v; rm -rf .dev-data; say "Local data deleted."; exit 0 ;;
   build) exec node node_modules/next/dist/bin/next build --webpack ;;
-  start) exec node node_modules/next/dist/bin/next start --port "$PORT" ;;
+  start) [ -f .next/BUILD_ID ] || fail "No production build found. Run ./run.sh build first." ;;
   dev) ;;
   *) fail "Unknown mode '$MODE'. Use: ./run.sh [dev|stop|reset|build|start]" ;;
 esac
 
+# Asks the API's /health with Node, so curl is not required.
+api_up() { node -e 'fetch(process.argv[1]).then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))' "http://127.0.0.1:${DEV_API_PORT}/health"; }
 port_busy() { node -e 'const s=require("net").createServer();s.once("error",()=>process.exit(0));s.once("listening",()=>s.close(()=>process.exit(1)));s.listen(Number(process.argv[1]),"127.0.0.1")' "$1"; }
 for p in "$PORT" "$DEV_API_PORT"; do
   if port_busy "$p"; then fail "Port $p is already in use. Stop whatever is using it (or change PORT / DEV_API_PORT in .env)."; fi
@@ -93,6 +98,7 @@ cleanup() {
   trap - EXIT INT TERM
   for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
+  [ -n "${PIDS[*]:-}" ] || return 0
   say "Stopped the API and dashboard. Docker services keep running; use ./run.sh stop to stop them."
 }
 trap cleanup EXIT INT TERM
@@ -113,15 +119,16 @@ else
 fi
 
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:${DEV_API_PORT}/health" >/dev/null 2>&1; then break; fi
+  if api_up; then break; fi
   kill -0 "${PIDS[0]}" 2>/dev/null || fail "The API exited during start-up. See the log above."
   sleep 0.5
 done
-curl -fsS "http://127.0.0.1:${DEV_API_PORT}/health" >/dev/null 2>&1 || say "The API did not answer /health yet; continuing."
+api_up || say "The API did not answer /health yet; continuing."
 
 # --- Dashboard -----------------------------------------------------------------
 say "Starting the dashboard on :$PORT"
-NODE_OPTIONS="${NODE_OPTIONS:-} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON" node node_modules/next/dist/bin/next dev --port "$PORT" &
+if [ "$MODE" = "start" ]; then NEXT_CMD=start; say "Serving the production build (local http:// upload links do not preview in production builds; use ./run.sh for that)"; else NEXT_CMD=dev; fi
+NODE_OPTIONS="${NODE_OPTIONS:-} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON" node node_modules/next/dist/bin/next "$NEXT_CMD" --port "$PORT" &
 PIDS+=("$!")
 
 cat <<EOF
