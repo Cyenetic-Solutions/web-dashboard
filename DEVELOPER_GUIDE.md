@@ -11,8 +11,9 @@
 - `services/`: `http.ts` transport and error envelope, one Zod-validated adapter per module, `permissions.ts` RBAC matrix and the tested `cvss.ts`. Components never fetch directly.
 - `tests/`: desktop/mobile Playwright scenarios; unit tests are colocated with their features.
 - `proxy.ts`: per-request nonce/CSP and private cache policy; no API authorization is delegated to it.
-- `dev-api/`: local-only Node API used by `./run.sh` (JSON-file store, SMTP to Mailpit, S3 to MinIO). It reuses `services/content.schema.ts`, `permissions.ts`, `cvss.ts` and `ops.schema.ts` so validation and RBAC match the dashboard. It is excluded from the Docker image and is not a production backend.
-- `compose.dev.yaml`: Mailpit and MinIO for local development, plus PostgreSQL and Redis under the `backend` profile.
+- `dev-api/`: local-only Node API used by `./run.sh` (JSON-file store, SMTP to Mailpit, uploads on local disk by default or in MinIO with `STORAGE_DRIVER=minio`). It reuses `services/content.schema.ts`, `permissions.ts`, `cvss.ts` and `ops.schema.ts` so validation and RBAC match the dashboard. It is excluded from the Docker image and is not a production backend.
+- `compose.dev.yaml`: Mailpit for local development, MinIO under the `minio` profile (only with `STORAGE_DRIVER=minio`), and PostgreSQL and Redis under the `backend` profile.
+- `api_doc.md`: every API endpoint with its request, response and required role. Update it whenever a contract in `services/` or `dev-api/` changes.
 
 Public frontend, API and client portal remain separate repositories/applications. The dashboard consumes HTTP APIs and does not access PostgreSQL or host Next.js API routes.
 
@@ -32,7 +33,7 @@ The unmodified `design/index.html` is the design authority. `app/globals.css` pr
 
 ## Identity, CSP and runtime
 
-`NEXT_PUBLIC_API_URL` is public configuration and is compiled into client assets. Set it before building; never put secrets in NEXT_PUBLIC variables. Outside production builds, image fields and the CSP also accept `http://localhost` / `http://127.0.0.1` URLs so uploads served by local MinIO preview and save; production builds accept https only.
+`NEXT_PUBLIC_API_URL` is public configuration and is compiled into client assets. Set it before building; never put secrets in NEXT_PUBLIC variables. Outside production builds, image fields and the CSP also accept `http://localhost` / `http://127.0.0.1` URLs so uploads served by the local dev API (or local MinIO) preview and save; production builds accept https only.
 
 Sign-in is email + password, then a code the API emails over SMTP ([contract](docs/AUTH_EMAIL_OTP.md)). The dashboard never creates or sends the code. The access token stays in memory; the API's HttpOnly refresh cookie restores sessions, and a 401 triggers one shared refresh and a retry. Only the theme choice uses localStorage. A pre-paint nonced script applies the theme to avoid a flash. UI gates do not protect data; every private backend request requires authorization. Put the deployed dashboard behind Cloudflare Access as an additional control.
 
@@ -44,6 +45,8 @@ The dynamic root layout and proxy issue per-request script nonces. Production sc
 
 The production build uses Webpack to match the verified frontend build path. Docker uses standalone output, a non-root user and a /login health check. CI installs locked dependencies before every check. Deployment is opt-in; read [DEPLOYMENT.md](docs/DEPLOYMENT.md). Update matching API/client schema definitions together and record changes in CHANGELOG.
 
-## Dependency audit note (2026-10-03)
+## Dependency audit note (2026-10-25)
 
-Production dependencies have no reported npm advisories after updating Next.js to 16.3.8. The full audit still reports five high-severity entries in the development-only `eslint-config-next → fast-glob → micromatch → braces` chain (one underlying nested-pattern stack-exhaustion advisory). No compatible patched braces release was available in the audited dependency tree. Do not force npm's suggested downgrade to Next 14 lint tooling; track a compatible upstream fix. This chain is excluded from the standalone production application.
+`npm audit` reports no vulnerabilities, production or development, after updating Next.js to 16.4.3 (fixes critical remote-code-execution advisories GHSA-2464-fhr4-w9xw and GHSA-673q-mjm6-r5xr, and the Server Actions denial of service GHSA-p3m5-59mp-jv5r), React to 19.3.1, Zod to 4.6.7 and the Vitest/Vite test stack to Vitest 5 / Vite 8. The earlier development-only `braces` advisory is gone from the tree.
+
+Two tools stay one major behind on purpose: ESLint stays on 9 because `eslint-plugin-react`, `eslint-plugin-import` and `eslint-plugin-jsx-a11y` (used by `eslint-config-next`) do not support ESLint 10 yet, and TypeScript stays on 6.0 because `typescript-eslint` supports TypeScript below 6.1 only. `@types/node` stays on 22 to match the Node 22 runtime. Neither ships in the production image.

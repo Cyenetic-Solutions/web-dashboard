@@ -4,7 +4,7 @@ import { isImageUrl } from '@/services/content.schema';
 
 /** Only web and mail links are rendered; anything else (javascript:, data:) becomes plain text. */
 export function safeHref(url: string) { return /^(https?:\/\/|mailto:|\/(?!\/)|#)/i.test(url.trim()) ? url.trim() : null; }
-/** Images must come from an https origin (or local MinIO during development). */
+/** Images must come from an https origin (or local dev uploads during development). */
 export function safeImage(url: string) { return isImageUrl(url.trim()) ? url.trim() : null; }
 
 const inlinePattern = /(`[^`]+`)|!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|~~([^~]+)~~/g;

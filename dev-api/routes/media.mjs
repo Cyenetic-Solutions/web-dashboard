@@ -1,9 +1,11 @@
-// /api/v1/admin/media: multipart uploads stored in MinIO, checked by magic bytes, with presigned private downloads.
+// /api/v1/admin/media: multipart uploads checked by magic bytes, stored on local disk (default) or MinIO, with time-limited private links.
+// /files/...: serves local-disk uploads (public ones openly, private ones only with a valid signed link).
 import { createHash } from 'node:crypto';
 import { can } from '../../services/permissions.ts';
 import { clientIp, requirePermission } from '../lib/auth.mjs';
 import { HttpError, badRequest, matches, notFound, paginate, readBody } from '../lib/http.mjs';
 import { appendAudit } from '../lib/store.mjs';
+import { extensionFor as extension } from '../lib/storage.mjs';
 
 const MB = 1024 * 1024;
 const image = { types: ['image/jpeg', 'image/png', 'image/webp'], max: 5 * MB, bucket: 'PUBLIC' };
@@ -13,7 +15,6 @@ const purposes = {
   'finding-video': { types: ['video/mp4', 'video/webm'], max: 100 * MB, bucket: 'PRIVATE' },
   'finding-evidence': { types: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], max: 20 * MB, bucket: 'PRIVATE' },
 };
-const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf', 'video/mp4': 'mp4', 'video/webm': 'webm' };
 
 /** Detects the real file type from its first bytes; the browser-supplied type is never trusted. */
 function sniff(buf) {
@@ -61,10 +62,9 @@ function parseMultipart(body, contentType) {
   return { fields, files };
 }
 
-export function mediaRoutes(router, { store, s3, config }) {
+export function mediaRoutes(router, { store, storage }) {
   const base = '/api/v1/admin/media';
-  const bucketName = (bucket) => (bucket === 'PUBLIC' ? config.s3.publicBucket : config.s3.privateBucket);
-  const view = (m) => ({ ...m, url: m.bucket === 'PUBLIC' ? s3.publicUrl(bucketName(m.bucket), m.key) : null, key: undefined, uploadedBy: undefined });
+  const view = (m) => ({ ...m, url: m.bucket === 'PUBLIC' ? storage.publicUrl(m.key) : null, key: undefined, uploadedBy: undefined });
   const mayPrivate = (actor) => can(actor.role, 'findings:read');
 
   router.get(base, async (ctx) => {
@@ -84,9 +84,9 @@ export function mediaRoutes(router, { store, s3, config }) {
     if (!type || !rule.types.includes(type)) throw new HttpError(415, 'UNSUPPORTED_TYPE', `This file type is not allowed for ${fields.purpose}.`);
     if (file.content.length > rule.max) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', `Files for ${fields.purpose} must be ${rule.max / MB} MB or smaller.`);
     const id = store.id(), key = `${fields.purpose}/${id}.${extension[type]}`;
-    try { await s3.putObject(bucketName(rule.bucket), key, file.content, type); } catch (error) {
-      console.error('[dev-api] MinIO upload failed:', error.message);
-      throw new HttpError(503, 'STORAGE_UNAVAILABLE', 'The file could not be stored. Is MinIO running?');
+    try { await storage.put(rule.bucket, key, file.content, type); } catch (error) {
+      console.error(`[dev-api] Upload to ${storage.label} failed:`, error.message);
+      throw new HttpError(503, 'STORAGE_UNAVAILABLE', storage.driver === 'minio' ? 'The file could not be stored. Is MinIO running?' : 'The file could not be written to local storage.');
     }
     const media = { id, key, bucket: rule.bucket, originalName: file.filename.slice(0, 255), mimeType: type, sizeBytes: file.content.length, ...dimensions(file.content, type),
       sha256: createHash('sha256').update(file.content).digest('hex'), altText: file.filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').slice(0, 200),
@@ -100,9 +100,9 @@ export function mediaRoutes(router, { store, s3, config }) {
     const actor = ctx.actor(); requirePermission(actor, 'media:write');
     const media = store.data.media.find((m) => m.id === ctx.params.id);
     if (!media || (media.bucket !== 'PUBLIC' && !mayPrivate(actor))) throw notFound('File not found');
-    if (media.bucket === 'PUBLIC') return { data: { url: s3.publicUrl(config.s3.publicBucket, media.key) } };
+    if (media.bucket === 'PUBLIC') return { data: { url: storage.publicUrl(media.key) } };
     appendAudit(store, { actorEmail: actor.user.email, actorName: actor.user.fullName, action: 'MEDIA_PRIVATE_ACCESS', resourceType: 'MEDIA', resourceId: media.id, summary: media.originalName, ipAddress: clientIp(ctx.req) });
-    return { data: { url: s3.presignGet(config.s3.privateBucket, media.key, 900) } };
+    return { data: { url: storage.privateUrl(media.key, 900) } };
   });
   router.patch(`${base}/:id`, async (ctx) => {
     const actor = ctx.actor(); requirePermission(actor, 'media:write');
@@ -113,4 +113,15 @@ export function mediaRoutes(router, { store, s3, config }) {
     media.altText = altText; store.save();
     return { data: view(media) };
   });
+
+  if (!storage.read) return;
+  const serve = (bucket) => async (ctx) => {
+    const found = await storage.read(bucket, `${ctx.params.purpose}/${ctx.params.name}`, ctx.url.searchParams);
+    if (!found) throw notFound('File not found');
+    return ctx.file(found.body, { 'Content-Type': found.type, 'Content-Length': String(found.body.length), 'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'cross-origin', 'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cache-Control': bucket === 'PUBLIC' ? 'public, max-age=300' : 'private, no-store' });
+  };
+  router.get('/files/public/:purpose/:name', serve('PUBLIC'));
+  router.get('/files/private/:purpose/:name', serve('PRIVATE'));
 }

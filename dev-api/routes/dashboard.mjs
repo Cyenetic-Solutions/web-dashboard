@@ -5,6 +5,7 @@ import { severities } from '../../services/ops.schema.ts';
 const closed = new Set(['FIXED_VERIFIED', 'RISK_ACCEPTED', 'FALSE_POSITIVE']);
 const openPipeline = ['NEW', 'SCOPING_CALL', 'RFP_REVIEW', 'PROPOSAL_SENT'];
 const day = 86400_000;
+const readableBy = { CONTENT: 'content:read', INQUIRY: 'crm:read', SUBSCRIBER: 'crm:read', REPORT_LEAD: 'crm:read' };
 
 export function dashboardRoutes(router, { store }) {
   const base = '/api/v1/admin/dashboard';
@@ -35,9 +36,12 @@ export function dashboardRoutes(router, { store }) {
     } };
   });
   router.get(`${base}/activity`, async (ctx) => {
-    guard(ctx);
+    const actor = ctx.actor(); const may = (permission) => can(actor.role, permission);
     const limit = Math.min(50, Number(ctx.url.searchParams.get('limit')) || 12);
-    return { data: store.data.auditLogs.slice(-limit).reverse().map((e) => ({ id: e.id, actorName: e.actorName ?? e.actorEmail, action: e.action, summary: e.summary ?? e.action, resourceType: e.resourceType, createdAt: e.createdAt })) };
+    // Without audit:read a role only sees its own actions plus CMS and CRM changes it can already read;
+    // War-Room, user and media entries stay with roles that hold audit:read.
+    const shown = (e) => may('audit:read') || e.actorEmail === actor.user.email || (readableBy[e.resourceType] && may(readableBy[e.resourceType]));
+    return { data: store.data.auditLogs.filter(shown).slice(-limit).reverse().map((e) => ({ id: e.id, actorName: e.actorName ?? e.actorEmail, action: e.action, summary: e.summary ?? e.action, resourceType: e.resourceType, createdAt: e.createdAt })) };
   });
   router.get(`${base}/upcoming`, async (ctx) => {
     const may = guard(ctx);

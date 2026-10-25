@@ -4,7 +4,7 @@ const text = z.string().trim().min(1).max(10000);
 const short = (max: number) => z.string().trim().min(1, 'Required').max(max);
 const optional = (max: number) => z.string().trim().max(max);
 const https = z.url().startsWith('https://', 'Use an https:// URL');
-/** Local MinIO (./run.sh) serves uploads from http://localhost; accepted only outside production builds. */
+/** The local dev API or MinIO (./run.sh) serves uploads from http://localhost; accepted only outside production builds. */
 const allowLoopbackHttp = process.env.NODE_ENV !== 'production';
 /** True for an https URL, or a loopback http URL during local development. */
 export function isImageUrl(url: string) {

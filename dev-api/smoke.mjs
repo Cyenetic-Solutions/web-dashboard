@@ -1,4 +1,4 @@
-// End-to-end check of a running local stack (./run.sh): sign-in through Mailpit, CMS, CRM, ops, media in MinIO and RBAC.
+// End-to-end check of a running local stack (./run.sh): sign-in through Mailpit, CMS, CRM, ops, uploads (local disk or MinIO) and RBAC.
 // Usage: npm run dev:smoke   (reads .env; leaves a few test records behind in the local store)
 const env = process.env;
 const API = `http://localhost:${env.DEV_API_PORT ?? 4000}`, MAIL = `http://localhost:${env.MAILPIT_UI_PORT ?? 8025}`;
@@ -56,7 +56,13 @@ check('finding score is recomputed from the vector', finding.json?.data?.cvssSco
 const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex');
 const form = new FormData(); form.append('purpose', 'blog-cover'); form.append('file', new Blob([png], { type: 'image/png' }), 'smoke.png');
 const upload = await (await fetch(`${API}/api/v1/admin/media`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form })).json();
-check('image upload is stored in MinIO', Boolean(upload.data?.url) && (await fetch(upload.data.url)).status === 200, JSON.stringify(upload));
+check(`image upload is stored (${env.STORAGE_DRIVER ?? 'local'}) and readable`, Boolean(upload.data?.url) && (await fetch(upload.data.url)).status === 200, JSON.stringify(upload));
+const evidence = new FormData(); evidence.append('purpose', 'finding-evidence'); evidence.append('file', new Blob([png], { type: 'image/png' }), 'evidence.png');
+const privateUpload = await (await fetch(`${API}/api/v1/admin/media`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: evidence })).json();
+check('private upload has no public URL', privateUpload.data?.bucket === 'PRIVATE' && privateUpload.data?.url === null, JSON.stringify(privateUpload));
+const signed = (await call('GET', `/api/v1/admin/media/${privateUpload.data?.id}/url`, null, token)).json?.data?.url;
+check('signed private link opens', Boolean(signed) && (await fetch(signed)).status === 200, signed);
+check('private link without its signature is refused', Boolean(signed) && (await fetch(signed.split('?')[0])).status >= 400);
 const fake = new FormData(); fake.append('purpose', 'blog-cover'); fake.append('file', new Blob([Buffer.from('<?php system($_GET[1]); ?> padding')], { type: 'image/png' }), 'fake.png');
 check('non-image bytes are rejected', (await fetch(`${API}/api/v1/admin/media`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: fake })).status === 415);
 check('audit chain verifies', (await call('GET', '/api/v1/admin/audit-logs/verify-chain', null, token)).json?.data?.valid === true);
@@ -65,6 +71,11 @@ const editor = await signIn(env.DEV_EDITOR_EMAIL, env.DEV_EDITOR_PASSWORD);
 check('editor signs in', Boolean(editor.token));
 check('editor cannot publish', (await call('PUT', `/api/v1/admin/content/posts/${slug}-ed`, { ...post, slug: `${slug}-ed`, status: 'published' }, editor.token)).status === 403);
 check('editor cannot manage users', (await call('GET', '/api/v1/admin/users', null, editor.token)).status === 403);
+const feed = (await call('GET', '/api/v1/admin/dashboard/activity?limit=50', null, editor.token)).json?.data ?? [];
+check('editor activity feed hides War-Room and media entries', feed.length > 0 && !feed.some((e) => ['ENGAGEMENT', 'FINDING', 'MEDIA'].includes(e.resourceType)), JSON.stringify(feed.map((e) => e.resourceType)));
+const nullBody = await fetch(`${API}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'null' });
+check('a JSON body that is not an object gets 400', nullBody.status === 400, String(nullBody.status));
+check('a badly encoded URL gets 400', (await fetch(`${API}/api/v1/admin/findings/%E0`, { headers: { authorization: `Bearer ${token}` } })).status === 400);
 
 console.log(failures ? `\n${failures} check(s) failed.` : '\nAll checks passed.');
 process.exit(failures ? 1 : 0);
