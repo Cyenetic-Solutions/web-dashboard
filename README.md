@@ -28,6 +28,9 @@ npx playwright install chromium
 npm run test:e2e
 npm run build
 npm audit --omit=dev --audit-level=high
+for script in scripts/*.sh; do bash -n "$script"; done
+node --test scripts/deployment.test.mjs
+bash scripts/check-container.sh
 ```
 
 Playwright starts its own server on port 3101 and tests desktop/mobile publishing and logout against a mocked API boundary. Backend authorization and PostgreSQL behavior are tested in the API repository.

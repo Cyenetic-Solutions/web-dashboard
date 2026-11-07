@@ -32,7 +32,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: for script in scripts/*.sh; do bash -n "$script"; done
       - run: npm run check:architecture
+      - run: node --test scripts/deployment.test.mjs
   tests:
     name: Test suites
     runs-on: ubuntu-latest
@@ -63,9 +65,22 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
+  container:
+    name: Container smoke test
+    needs: [architecture, tests, security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        env:
+          COMPOSE_PROJECT_NAME: cyenetic-dashboard
+        run: docker compose config --quiet
+      - name: Build and exercise production container
+        run: bash scripts/check-container.sh
   build:
     name: Production build
-    needs: [architecture, tests, security]
+    needs: [architecture, tests, security, container]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

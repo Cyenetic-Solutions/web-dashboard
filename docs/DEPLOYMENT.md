@@ -12,12 +12,12 @@ Adapted from the frontend's reusable CI + main-branch SSH archive deployment. No
 
 ## VPS prerequisites
 
-The deployment user must own the chosen directory under `/opt/web` and access Docker without sudo. Provision the external `traefik-net` network and existing Traefik TLS resolver. Configure DNS for `admin.cyenetic.com`. No application host port is published. Keep dashboard access behind Cloudflare Access; TLS/HSTS are edge responsibilities.
+The deployment user must own the chosen directory under `/opt/web` and access Docker without sudo. Provision the external `traefik-proxy` network shared with Traefik and the existing TLS resolver. Configure DNS for `admin.cyenetic.com`. No application host port is published. Keep dashboard access behind Cloudflare Access; TLS/HSTS are edge responsibilities.
 
 The image compiles with demo login disabled. The API URL is public configuration, never a secret. Configure the identity provider before staff access; token-entry bootstrap is supplied, not a full OIDC redirect flow.
 
 ## Release behavior and recovery
 
-The workflow archives the checked-out commit, preserves VPS `.env` and `.env.production`, builds on the VPS, adds a replica, waits for its Docker health check and proxy discovery, then stops old replicas. Database/storage services are external and must not live under the replaceable release directory. Deployments use a non-root image and a health check matching this process. Do not prune shared-host images globally.
+The workflow packages the exact checked-out commit, validates the release settings, transfers it over pinned SSH, and stages it in a versioned release directory. Runtime `.env` files remain outside the release directory. The configured `NEXT_PUBLIC_API_URL` is passed only to the image build. Compose builds a replacement replica while keeping healthy replicas in service; cutover occurs only after the replacement passes its Docker health check. Failed candidates are removed while old replicas remain available. Do not prune shared-host images globally.
 
 There is no automatic database rollback. On failure old replicas are retained until replacement health succeeds; restore application code by a tested revert and redeploy. Review migrations for backward compatibility across overlapping replicas. Monitor logs without emitting tokens, environment secrets, or sensitive document bodies.
