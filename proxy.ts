@@ -15,6 +15,8 @@ export function proxy(request: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'no-referrer');
   response.headers.set('Cache-Control', 'private, no-store');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  if (!dev) response.headers.set('Strict-Transport-Security', 'max-age=31536000');
   return response;
 }
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'] };
