@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-09
+
+- Security: Next.js 16.4.3 → 16.4.5 (and `eslint-config-next` to match). `npm audit --omit=dev` reports 0 vulnerabilities; 8 moderate development-only findings (`minimatch` via `typescript-eslint`) remain until upstream ships a fix.
+- Turned off the unused Next.js image optimizer (`/_next/image`); responses now send a Permissions-Policy, and production responses send HSTS.
+- CI and deployment workflows use `actions/checkout`, `actions/setup-node` and `actions/upload-artifact` v6, which run on Node 24 and clear GitHub's Node 20 deprecation warning.
+
 ## 2026-10-25
 
 - Security: updated Next.js 16.3.8 → 16.4.3 (critical remote-code-execution and denial-of-service advisories), React 19.2.8 → 19.3.1, Zod → 4.6.7, and the test stack to Vitest 5, Vite 8, `@vitejs/plugin-react` 6, jsdom 29 and jest-dom 7. `npm audit` now reports 0 vulnerabilities. ESLint stays on 9 and TypeScript on 6.0 until Next's lint plugins support newer majors. `vitest.config.ts` is now `vitest.config.mts` for Vite 8's ESM config loader.

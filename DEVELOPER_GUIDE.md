@@ -37,13 +37,17 @@ The unmodified `design/index.html` is the design authority. `app/globals.css` pr
 
 Sign-in is email + password, then a code the API emails over SMTP ([contract](docs/AUTH_EMAIL_OTP.md)). The dashboard never creates or sends the code. The access token stays in memory; the API's HttpOnly refresh cookie restores sessions, and a 401 triggers one shared refresh and a retry. Only the theme choice uses localStorage. A pre-paint nonced script applies the theme to avoid a flash. UI gates do not protect data; every private backend request requires authorization. Put the deployed dashboard behind Cloudflare Access as an additional control.
 
-The dynamic root layout and proxy issue per-request script nonces. Production script CSP does not allow unsafe-inline/unsafe-eval; development allows eval for tooling. Styles permit inline styles for framework/template compatibility. The CSP permits the configured API origin and embedded font data. No private staff response should be cached publicly. Production must use HTTPS.
+The dynamic root layout and proxy issue per-request script nonces. Production script CSP does not allow unsafe-inline/unsafe-eval; development allows eval for tooling. Styles permit inline styles for framework/template compatibility. The CSP permits the configured API origin and embedded font data. No private staff response should be cached publicly. Every response also sends `nosniff`, `no-referrer` and a Permissions-Policy that turns off camera, microphone, location, payment and USB; production responses add HSTS (one year). Production must use HTTPS. The Next.js image optimizer (`/_next/image`) is off (`images.unoptimized`) because the app renders plain `<img>` tags.
 
 ## Test and release
 
 `npm run check:architecture` checks folder boundaries, explicit any types, transport location and file size, then generates route types and checks TypeScript. Vitest covers the content editor and CVSS 3.1 scores against known vectors. Playwright mocks the API in `tests/mockApi.ts` and `tests/fixtures.ts` and covers sign-in with the emailed code, publishing, sign-out, every workspace without horizontal overflow, and the missing-module state. Backend tests exercise authorization/persistence separately; mocked browser tests are not a substitute.
 
 The production build uses Webpack to match the verified frontend build path. Docker uses standalone output, a non-root user and a /login health check. CI installs locked dependencies before every check. Deployment is opt-in; read [DEPLOYMENT.md](docs/DEPLOYMENT.md). Update matching API/client schema definitions together and record changes in CHANGELOG.
+
+## Dependency audit note (2026-11-09)
+
+`npm audit --omit=dev` (the CI gate) reports 0 vulnerabilities with Next.js 16.4.5 and Zod 4.6.7; the advisories GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r, GHSA-673q-mjm6-r5xr (Next.js 16.0–16.4.0) and GHSA-mrhx-c7xc-m3w5 (Zod below 4.6.6) are fixed. The full `npm audit` now shows 8 moderate, development-only findings: a `minimatch` denial of service pulled in by `typescript-eslint` through `eslint-config-next`. npm's only offered fix downgrades `eslint-config-next` to 15, so it waits for an upstream release; none of it ships in the production image. CI actions run on Node 24 (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact` v6).
 
 ## Dependency audit note (2026-10-25)
 
