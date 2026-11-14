@@ -75,6 +75,8 @@ export function mediaRoutes(router, { store, storage }) {
   router.post(base, async (ctx) => {
     const actor = ctx.actor(); requirePermission(actor, 'media:write');
     const { fields, files } = parseMultipart(await readBody(ctx.req, 101 * MB), ctx.req.headers['content-type']);
+    // Same as the live API: purpose comes from the query string (a form field is still accepted).
+    fields.purpose = ctx.url.searchParams.get('purpose') ?? fields.purpose;
     const rule = purposes[fields.purpose];
     if (!rule) throw badRequest('Choose a valid upload purpose.');
     if (rule.bucket === 'PRIVATE' && !mayPrivate(actor)) throw new HttpError(403, 'FORBIDDEN', 'Your role cannot upload private files.');

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ApiError, apiBase, dataOf, listOf, query, request } from './http';
+import { ApiError, apiBase, dataOf, listOf, parseDataOrBare, query, request } from './http';
 
 export const mediaSchema = z.object({
   id: z.string(), bucket: z.enum(['PUBLIC', 'PRIVATE', 'QUARANTINE']), originalName: z.string(), mimeType: z.string(),
@@ -21,22 +21,23 @@ export async function mediaUrl(id: string, token: string) {
 }
 /** Updates alt text. */
 export async function updateMedia(id: string, altText: string, token: string) {
-  return dataOf(mediaSchema).parse(await request(`/api/v1/admin/media/${encodeURIComponent(id)}`, { token, method: 'PATCH', body: { altText } })).data;
+  return parseDataOrBare(mediaSchema, await request(`/api/v1/admin/media/${encodeURIComponent(id)}`, { token, method: 'PATCH', body: { altText } }));
 }
-/** Multipart upload with progress; the API validates magic bytes and size and stores the file. */
+/** Multipart upload with progress; the API validates magic bytes and size and stores the file. The live API reads `purpose` from the query string only. */
 export function uploadMedia(file: File, purpose: (typeof purposes)[number], token: string, onProgress: (fraction: number) => void) {
   return new Promise<MediaAsset>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const form = new FormData(); form.append('purpose', purpose); form.append('file', file);
-    xhr.open('POST', `${apiBase}/api/v1/admin/media`);
+    const form = new FormData(); form.append('file', file);
+    xhr.open('POST', `${apiBase}/api/v1/admin/media${query({ purpose })}`);
     xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onerror = () => reject(new ApiError(0, 'Upload failed: the API could not be reached.', 'NETWORK'));
     xhr.onload = () => {
       let payload: unknown = null; try { payload = JSON.parse(xhr.responseText); } catch { payload = null; }
       if (xhr.status >= 200 && xhr.status < 300) { const parsed = dataOf(mediaSchema).safeParse(payload); if (parsed.success) resolve(parsed.data.data); else reject(new ApiError(xhr.status, 'Unexpected upload response')); return; }
-      const message = z.object({ error: z.object({ message: z.string() }) }).safeParse(payload);
-      reject(new ApiError(xhr.status, message.success ? message.data.error.message : 'Upload failed'));
+      // Dashboard contract: { error: { message } }; live API: { error: 'No file uploaded' }.
+      const message = z.object({ error: z.union([z.string(), z.object({ message: z.string() }).transform((e) => e.message)]) }).safeParse(payload);
+      reject(new ApiError(xhr.status, message.success ? message.data.error : 'Upload failed'));
     };
     xhr.send(form);
   });

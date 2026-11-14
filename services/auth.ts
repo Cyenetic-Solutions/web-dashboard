@@ -7,8 +7,8 @@ export const emailSchema = z.email('Enter a valid work email').trim().toLowerCas
 /** Staff password policy mirrored from the API (server remains authoritative). */
 export const passwordSchema = z.string().min(12, 'Use at least 12 characters').max(256);
 
-/** Raw email-code challenge as returned by the API (absolute timestamps, opaque challenge id). */
-const apiChallengeSchema = z.object({ codeRequired: z.literal(true), challengeId: z.string().min(1),
+/** Raw email-code challenge as returned by the API (absolute timestamps, opaque challenge id). The live API omits `codeRequired`. */
+const apiChallengeSchema = z.object({ codeRequired: z.literal(true).optional(), challengeId: z.string().min(1),
   expiresAt: z.string(), resendAvailableAt: z.string(), maskedEmail: z.string() });
 /** Pending email-OTP challenge: the opaque token identifies it; the code itself only exists in the email. */
 export interface OtpChallenge { otpToken: string; deliveredTo: string; expiresInSeconds: number; resendAfterSeconds: number }
@@ -19,28 +19,31 @@ function toChallenge(raw: z.infer<typeof apiChallengeSchema>): OtpChallenge {
   return { otpToken: raw.challengeId, deliveredTo: raw.maskedEmail,
     expiresInSeconds: Math.max(1, secondsUntil(raw.expiresAt)), resendAfterSeconds: secondsUntil(raw.resendAvailableAt) };
 }
-const tokenSchema = z.object({ accessToken: z.string().min(1), expiresInSeconds: z.number().int().positive().optional() });
-const authCookie = { credentials: 'include' as const, headers: { 'X-Requested-With': 'cyenetic-admin' } };
+/** Token pair from verify/refresh. The live API returns the opaque refresh token in the body and rotates it on every refresh. */
+const tokenSchema = z.object({ accessToken: z.string().min(1), refreshToken: z.string().min(32).max(256),
+  expiresInSeconds: z.number().int().positive().optional() });
+/** Access and rotating refresh token, both kept in tab memory only. */
+export type TokenPair = z.infer<typeof tokenSchema>;
 
 /** Step 1: verifies email + password; the API then emails a one-time code over SMTP. */
 export async function startLogin(email: string, password: string) {
   return toChallenge(apiChallengeSchema.parse(await request('/api/v1/auth/login', { method: 'POST', body: { email, password } })));
 }
-/** Step 2: exchanges the emailed code for an access token; the API sets the HttpOnly refresh cookie. */
-export async function verifyOtp(otpToken: string, code: string) {
-  return tokenSchema.parse(await request('/api/v1/auth/login/verify', { method: 'POST', body: { challengeId: otpToken, code }, ...authCookie }));
+/** Step 2: exchanges the emailed code for an access token and a refresh token. */
+export async function verifyOtp(otpToken: string, code: string): Promise<TokenPair> {
+  return tokenSchema.parse(await request('/api/v1/auth/login/verify', { method: 'POST', body: { challengeId: otpToken, code } }));
 }
 /** Requests a fresh code for the same challenge, subject to server-side cooldown and rate limits. */
 export async function resendOtp(otpToken: string) {
   return toChallenge(apiChallengeSchema.parse(await request('/api/v1/auth/login/resend', { method: 'POST', body: { challengeId: otpToken } })));
 }
-/** Restores a session from the HttpOnly refresh cookie (rotated server-side on every use). */
-export async function refreshSession() {
-  return tokenSchema.parse(await request('/api/v1/auth/refresh', { method: 'POST', ...authCookie }));
+/** Exchanges the current refresh token for a new pair; the old refresh token stops working. */
+export async function refreshSession(refreshToken: string): Promise<TokenPair> {
+  return tokenSchema.parse(await request('/api/v1/auth/refresh', { method: 'POST', body: { refreshToken } }));
 }
-/** Revokes the current server session and clears the refresh cookie. */
-export async function logout(token: string | null) {
-  await request('/api/v1/auth/logout', { method: 'POST', token, ...authCookie });
+/** Revokes the server session that owns this refresh token. */
+export async function logout(refreshToken: string) {
+  await request('/api/v1/auth/logout', { method: 'POST', body: { refreshToken } });
 }
 /** Always accepted by the API to avoid account enumeration; a reset link is emailed when the account exists. */
 export async function forgotPassword(email: string) {

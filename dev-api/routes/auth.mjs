@@ -1,11 +1,11 @@
 // /api/v1/auth: email + password, then a 6-digit code emailed over SMTP (docs/AUTH_EMAIL_OTP.md).
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { checkPassword, clientIp, displayRole, hashPassword, maskEmail, newToken, sha256 } from '../lib/auth.mjs';
-import { HttpError, badRequest, parseCookies } from '../lib/http.mjs';
+import { HttpError, badRequest } from '../lib/http.mjs';
 import { appendAudit } from '../lib/store.mjs';
 
 const CODE_TTL = 10 * 60_000, RESEND_AFTER = 30_000, MAX_ATTEMPTS = 5;
-const REFRESH_COOKIE = 'cyenetic_refresh';
+// Like the live API, the refresh token travels in the JSON body (no cookie) and rotates on every refresh.
 const REFRESH_TTL_DAYS = 7;
 
 export function authRoutes(router, { store, config, tokens, mailer }) {
@@ -20,9 +20,7 @@ export function authRoutes(router, { store, config, tokens, mailer }) {
     if (recent.length > 10) throw new HttpError(429, 'RATE_LIMITED', 'Too many attempts. Wait a few minutes.');
   };
   const audit = (ctx, user, action, summary) => appendAudit(store, { actorEmail: user?.email ?? null, actorName: user?.fullName, action, resourceType: 'USER', resourceId: user?.id, summary, ipAddress: clientIp(ctx.req) });
-  const requireCsrfHeader = (ctx) => { if (ctx.req.headers['x-requested-with'] !== 'cyenetic-admin') throw new HttpError(403, 'CSRF', 'Missing X-Requested-With header.'); };
-  const setRefreshCookie = (ctx, value, maxAge) => ctx.res.setHeader('Set-Cookie',
-    `${REFRESH_COOKIE}=${value}; HttpOnly; SameSite=Strict; Path=/api/v1/auth; Max-Age=${maxAge}`);
+  const sessionFor = (value) => typeof value === 'string' && value ? store.data.sessions.find((s) => s.refreshHash === sha256(value) && !s.revokedAt) : undefined;
 
   async function issueChallenge(user, existingId) {
     const challengeId = existingId ?? newToken().token;
@@ -31,7 +29,7 @@ export function authRoutes(router, { store, config, tokens, mailer }) {
     await mailer({ to: user.email, subject: `Your Cyenetic Admin sign-in code: ${code}`,
       text: `Your sign-in code is ${code}\n\nIt expires in 10 minutes (${new Date(now + CODE_TTL).toUTCString()}).\n\nIf you did not try to sign in to Cyenetic Admin, ignore this email and tell the security team.\n` });
     challenges.set(challengeId, { userId: user.id, hash: codeHash(challengeId, code), expiresAt: now + CODE_TTL, resendAt: now + RESEND_AFTER, attempts: 0 });
-    return { codeRequired: true, challengeId, maskedEmail: maskEmail(user.email), expiresAt: new Date(now + CODE_TTL).toISOString(), resendAvailableAt: new Date(now + RESEND_AFTER).toISOString() };
+    return { challengeId, maskedEmail: maskEmail(user.email), expiresAt: new Date(now + CODE_TTL).toISOString(), resendAvailableAt: new Date(now + RESEND_AFTER).toISOString() };
   }
   const deliver = async (user, existingId) => {
     try { return await issueChallenge(user, existingId); } catch (error) {
@@ -80,32 +78,28 @@ export function authRoutes(router, { store, config, tokens, mailer }) {
     store.data.sessions.push(session);
     user.lastLoginAt = now;
     audit(ctx, user, 'LOGIN_SUCCESS', 'Signed in with email code');
-    setRefreshCookie(ctx, refresh.token, REFRESH_TTL_DAYS * 86400);
-    return { accessToken: tokens.issue(session), expiresInSeconds: tokens.ttlSeconds };
+    return { accessToken: tokens.issue(session), refreshToken: refresh.token, expiresInSeconds: tokens.ttlSeconds };
   });
 
   router.post('/api/v1/auth/refresh', async (ctx) => {
-    requireCsrfHeader(ctx);
-    const value = parseCookies(ctx.req.headers.cookie)[REFRESH_COOKIE];
-    const session = value && store.data.sessions.find((s) => s.refreshHash === sha256(value) && !s.revokedAt);
+    const { refreshToken } = await ctx.json();
+    const session = sessionFor(refreshToken);
     const fresh = session && Date.now() - Date.parse(session.lastUsedAt) < REFRESH_TTL_DAYS * 86400_000;
     const user = session && store.data.users.find((u) => u.id === session.userId && u.status === 'ACTIVE');
     if (!fresh || !user) throw new HttpError(401, 'UNAUTHENTICATED', 'No session');
     const rotated = newToken();
     session.refreshHash = rotated.hash; session.lastUsedAt = new Date().toISOString(); store.save();
-    setRefreshCookie(ctx, rotated.token, REFRESH_TTL_DAYS * 86400);
-    return { accessToken: tokens.issue(session), expiresInSeconds: tokens.ttlSeconds };
+    return { accessToken: tokens.issue(session), refreshToken: rotated.token, expiresInSeconds: tokens.ttlSeconds };
   });
 
   router.post('/api/v1/auth/logout', async (ctx) => {
-    requireCsrfHeader(ctx);
-    const value = parseCookies(ctx.req.headers.cookie)[REFRESH_COOKIE];
-    const session = value && store.data.sessions.find((s) => s.refreshHash === sha256(value) && !s.revokedAt);
+    const { refreshToken } = await ctx.json();
+    const session = sessionFor(refreshToken);
     if (session) {
       session.revokedAt = new Date().toISOString(); tokens.revokeSession(session.id);
       audit(ctx, store.data.users.find((u) => u.id === session.userId), 'LOGOUT', 'Signed out');
     }
-    setRefreshCookie(ctx, '', 0);
+    ctx.res.statusCode = 204;
     return undefined;
   });
 

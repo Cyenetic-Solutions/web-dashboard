@@ -16,19 +16,23 @@ export async function mockApi(page: Page, handle: (method: string, path: string,
     return route.fulfill({ status: reply.status ?? 200, headers, json: reply.json });
   });
 }
-/** Standard staff sign-in handlers mirroring the live API: no refresh cookie, password accepted, emailed code 123456. */
-export function authHandlers(role = 'SUPER_ADMIN') {
+/** Refresh token the mocked verify step hands out; refresh accepts it once and rotates it. */
+export const firstRefreshToken = 'refresh-token-0000000000000000000000000001';
+/** Staff sign-in handlers mirroring the live API (web-backend main): plain-string errors, display role names, refresh token in the body. */
+export function authHandlers(role = 'Super Admin') {
   return (method: string, path: string, body: unknown): Reply | undefined => {
     const inSeconds = (seconds: number) => new Date(Date.now() + seconds * 1000).toISOString();
-    const challenge = () => ({ codeRequired: true, challengeId: 'challenge-1', maskedEmail: 'a***@cyenetic.com', expiresAt: inSeconds(300), resendAvailableAt: inSeconds(30) });
-    if (path === '/api/v1/auth/refresh') return { status: 401, json: { error: { code: 'UNAUTHENTICATED', message: 'No session' } } };
+    const field = (name: string) => (typeof body === 'object' && body !== null ? new Map(Object.entries(body)).get(name) : null);
+    const challenge = () => ({ challengeId: '8f14e45f-ceea-4e7a-9d0b-2f1b7c3e5a10', maskedEmail: 'a***@cyenetic.com', expiresAt: inSeconds(300), resendAvailableAt: inSeconds(30) });
+    if (path === '/api/v1/auth/refresh') return field('refreshToken') === firstRefreshToken
+      ? { json: { accessToken: 'access-2', refreshToken: 'refresh-token-0000000000000000000000000002', expiresInSeconds: 900 } }
+      : { status: 401, json: { error: 'Session expired' } };
     if (path === '/api/v1/auth/login') return { json: challenge() };
     if (path === '/api/v1/auth/login/resend') return { json: challenge() };
-    if (path === '/api/v1/auth/login/verify') {
-      const code = typeof body === 'object' && body !== null && 'code' in body ? body.code : null;
-      return code === '123456' ? { json: { accessToken: 'access-1', expiresInSeconds: 900 } } : { status: 401, json: { error: { code: 'OTP_INVALID', message: 'Invalid code' } } };
-    }
-    if (path === '/api/v1/auth/logout') return { json: { ok: true } };
+    if (path === '/api/v1/auth/login/verify') return field('code') === '123456'
+      ? { json: { accessToken: 'access-1', refreshToken: firstRefreshToken, expiresInSeconds: 900 } }
+      : { status: 401, json: { error: 'Invalid code' } };
+    if (path === '/api/v1/auth/logout') return { json: {} };
     if (path === '/api/v1/auth/me') return { json: { data: { id: 'staff-1', role, email: 'analyst@cyenetic.com', fullName: 'Rafi Analyst' } } };
     return undefined;
   };

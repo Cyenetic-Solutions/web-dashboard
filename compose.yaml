@@ -11,7 +11,8 @@ services:
       - traefik-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.rule=Host(`admin.cyenetic.com`)"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.rule=Host(`${DASHBOARD_HOST:-admin.cyenetic.com}`)"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.entrypoints=websecure"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.tls.certresolver=letsencrypt"
       - "traefik.http.services.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.loadbalancer.server.port=3000"

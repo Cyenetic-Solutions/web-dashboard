@@ -1,25 +1,27 @@
 # Staff sign-in: email one-time code contract
 
-The dashboard signs staff in with email and password, then a 6-digit code **emailed by the API over SMTP**. No authenticator app is used. The dashboard implements its half of this flow (`services/auth.ts`, `features/auth/`). The API half is **not implemented yet**: until `cyenetic-backend` ships these endpoints, use `./run.sh`: its local dev API implements this contract and delivers codes to Mailpit (http://localhost:8025).
+The dashboard signs staff in with email and password, then a 6-digit code **emailed by the API over SMTP**. No authenticator app is used. The dashboard implements its half of this flow (`services/auth.ts`, `features/auth/`). The live API (`Cyenetic-Solutions/web-backend` main, at https://api.cyenetic.com) implements these endpoints, and the dashboard follows its contract below. Locally, `./run.sh` starts the dev API, which implements the same contract and delivers codes to Mailpit (http://localhost:8025).
 
 The dashboard never generates, sees or sends the code. It only forwards what the person types.
 
 ## Endpoints the API must provide
 
-All paths are under `/api/v1/auth`. Responses use the usual `{ data }` / `{ error: { code, message, details, requestId } }` envelopes.
+All paths are under `/api/v1/auth`. The live API returns these bodies bare (no `{ data }` wrapper) and errors as `{ error: "message" }`.
 
 | Method and path | Body | Success `data` | Notes |
 | --- | --- | --- | --- |
-| `POST /login` | `{ email, password }` | `{ codeRequired: true, challengeId, maskedEmail, expiresAt, resendAvailableAt }` | Verify the password, create a challenge, email the code. `maskedEmail` is masked (`r***@cyenetic.com`); the timestamps are ISO 8601. |
-| `POST /login/verify` | `{ challengeId, code }` | `{ accessToken, expiresInSeconds? }` | Sets the HttpOnly refresh cookie. Consumes the challenge. |
+| `POST /login` | `{ email, password }` | `{ challengeId, maskedEmail, expiresAt, resendAvailableAt }` | Verify the password, create a challenge, email the code. `maskedEmail` is masked (`r***@cyenetic.com`); the timestamps are ISO 8601. |
+| `POST /login/verify` | `{ challengeId, code }` | `{ accessToken, refreshToken, expiresInSeconds }` | Consumes the challenge. `challengeId` is a UUID. |
 | `POST /login/resend` | `{ challengeId }` | same shape as `/login` | Issues a new code and invalidates the previous one. |
-| `POST /refresh` | none (cookie) | `{ accessToken, expiresInSeconds? }` | Rotates the refresh cookie on every use. |
-| `POST /logout` | none (cookie + bearer) | empty | Revokes the session and clears the cookie. |
+| `POST /refresh` | `{ refreshToken }` | `{ accessToken, refreshToken, expiresInSeconds }` | Revokes the old refresh token and issues a new one. |
+| `POST /logout` | `{ refreshToken }` | empty (204) | Revokes that session. |
 | `POST /password/forgot` | `{ email }` | empty | Always 202, whether or not the account exists. Emails a reset link. |
 | `POST /password/reset` | `{ token, password }` | empty | Revokes every session for the account. |
 | `POST /invite/accept` | `{ token, password }` | empty | Activates an invited account. Its next sign-in uses the email code. |
 
-The dashboard then calls `GET /api/v1/auth/me` with the bearer token. It returns `{ data: { id, role, email, fullName } }`; `SUPER_ADMIN`, `SECURITY_AUDITOR` and `CONTENT_EDITOR` map to the dashboard roles, and any other role is refused.
+The dashboard then calls `GET /api/v1/auth/me` with the bearer token. It returns `{ data: { id, role, email, fullName } }`. The live API's `Super Admin`, `Security Auditor` and `Content Editor` (or the dev API's `SUPER_ADMIN` style names) map to the dashboard roles, and any other role is refused.
+
+Both tokens stay in tab memory only. Because the refresh token is not an HttpOnly cookie yet, a page reload signs the person out; the dashboard does not put the token in `localStorage` or `sessionStorage`, where a script injection could read it. Moving it to a cookie is listed in [API_need_fix.md](../API_need_fix.md).
 
 ## Status codes the dashboard handles
 
@@ -38,8 +40,8 @@ The dashboard then calls `GET /api/v1/auth/me` with the bearer token. It returns
 - Use a resend cooldown of about 30 to 60 seconds. Return it as `resendAfterSeconds`.
 - Compare codes in constant time. Return the same `/login` error for unknown accounts and wrong passwords.
 - The `otpToken` is opaque, random and short-lived. It grants nothing on its own.
-- Refresh cookie: `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`. Require the `X-Requested-With: cyenetic-admin` header on cookie requests as a CSRF check.
-- CORS must allow the dashboard origin with `credentials: true`. A wildcard origin will not work.
+- Target (not live yet): move the refresh token to an `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth` cookie, with an `X-Requested-With` CSRF header and credentialed CORS for the exact dashboard origin. Until then the token travels in the JSON body.
+- CORS must allow the exact dashboard origin, `https://admin.cyenetic.com`. A wildcard origin will not work.
 - Audit every sign-in, failed code, resend, lockout, password reset and logout. Never log the code or the password.
 
 ## SMTP delivery

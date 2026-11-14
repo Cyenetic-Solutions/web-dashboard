@@ -36,21 +36,20 @@ Every HTTP endpoint the Cyenetic staff dashboard uses: method, path, who may cal
 
 ### Authentication
 
-Staff sign in with email and password, then a 6-digit code that the API emails ([full contract](docs/AUTH_EMAIL_OTP.md)). A successful sign-in returns a short-lived **access token** (15 minutes in the dev API) and sets an HttpOnly **refresh cookie**.
+Staff sign in with email and password, then a 6-digit code that the API emails ([full contract](docs/AUTH_EMAIL_OTP.md)). A successful sign-in returns a short-lived **access token** (15 minutes in the dev API) and an opaque **refresh token** in the JSON body. This matches the live API (`Cyenetic-Solutions/web-backend` main, served at api.cyenetic.com). The earlier HttpOnly cookie design is still the target; see [API_need_fix.md](API_need_fix.md).
 
 | Credential | How it is sent | Used by |
 | --- | --- | --- |
 | Access token | `Authorization: Bearer <accessToken>` | Every `/api/v1/admin/*` endpoint and `GET /api/v1/auth/me` |
-| Refresh cookie `cyenetic_refresh` | Cookie, `HttpOnly; SameSite=Strict; Path=/api/v1/auth` (plus `Secure` in production) | `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` |
-| CSRF header | `X-Requested-With: cyenetic-admin` | Required on the two cookie endpoints above |
+| Refresh token | JSON body `{ "refreshToken": "…" }` (32–256 characters, rotated on every refresh) | `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` |
 
-The dashboard keeps the access token in memory only. When any request answers `401`, it calls `/auth/refresh` once and retries.
+The dashboard keeps both tokens in tab memory only, never in browser storage, so a page reload signs the user out. When any request answers `401`, it calls `/auth/refresh` once with the current refresh token and retries.
 
 "Signed in" in the tables below means any active staff account with a valid access token, whatever its role.
 
 ### CORS
 
-Only the dashboard origin (`DASHBOARD_URL`, or the comma-separated `CORS_ORIGINS`) receives CORS headers, with `Access-Control-Allow-Credentials: true`. Allowed headers: `authorization, content-type, x-requested-with`. Allowed methods: `GET, POST, PUT, PATCH, DELETE, OPTIONS`.
+Only the dashboard origin (`DASHBOARD_URL`, or the comma-separated `CORS_ORIGINS`) receives CORS headers. The dashboard sends no cookies (`credentials: omit`) and no custom headers beyond `authorization` and `content-type`, so it works with the live API's CORS settings (`DASHBOARD_ORIGIN` must be `https://admin.cyenetic.com` in production). Allowed methods: `GET, POST, PUT, PATCH, DELETE, OPTIONS`.
 
 ### Response envelopes
 
@@ -74,13 +73,14 @@ Every error uses one envelope:
 
 `details` is present only for validation errors. `requestId` matches the API log line.
 
+The live API uses a simpler shape: `{ "error": "Invalid request", "issues": [{ "path": ["data", "title"], "message": "…" }] }` for validation errors and `{ "error": "Record changed; reload before saving" }` otherwise. The dashboard reads both: it maps each issue path to its field (dropping the leading `data.`) and derives the code from the status.
+
 | Status | `code` | Meaning |
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | Body or query is invalid. The body must be a JSON object; badly encoded URLs are also 400 |
-| 401 | `UNAUTHENTICATED` | Missing, expired or revoked access token / refresh cookie |
+| 401 | `UNAUTHENTICATED` | Missing, expired or revoked access token / refresh token |
 | 401 | `invalid_credentials`, `invalid_code` | Sign-in failures (see [Authentication](#authentication)) |
 | 403 | `FORBIDDEN` | The role lacks the permission |
-| 403 | `CSRF` | `X-Requested-With: cyenetic-admin` missing on a cookie endpoint |
 | 404 | `NOT_FOUND` | Unknown route or record, or a record outside the caller's scope |
 | 405 | `METHOD_NOT_ALLOWED` | Path exists with another method |
 | 409 | `VERSION_CONFLICT`, `EMAIL_TAKEN` | Stale CMS version, duplicate user email |
@@ -166,7 +166,7 @@ Request:
 Response `200` (**bare**):
 
 ```json
-{ "codeRequired": true, "challengeId": "opaque-random-id", "maskedEmail": "a***@cyenetic.local",
+{ "challengeId": "uuid", "maskedEmail": "a***@cyenetic.local",
   "expiresAt": "2026-10-25T17:46:00.000Z", "resendAvailableAt": "2026-10-25T17:36:30.000Z" }
 ```
 
@@ -174,11 +174,11 @@ Errors: `401 invalid_credentials` (same message for unknown email, wrong passwor
 
 ### POST `/api/v1/auth/login/verify`
 
-Step 2. Exchanges the emailed code for an access token and sets the refresh cookie. **Roles:** public (needs a live challenge). Send with `credentials: include`.
+Step 2. Exchanges the emailed code for an access token and a refresh token. **Roles:** public (needs a live challenge).
 
 Request: `{ "challengeId": "…", "code": "123456" }`
 
-Response `200` (**bare**): `{ "accessToken": "…", "expiresInSeconds": 900 }` plus `Set-Cookie: cyenetic_refresh=…`
+Response `200` (**bare**): `{ "accessToken": "…", "refreshToken": "…", "expiresInSeconds": 900 }`
 
 Errors: `401 invalid_code` (retry allowed), `410 code_expired`, `429 too_many_attempts` (after 5 wrong codes the challenge is void; start again). Codes expire after 10 minutes and are single use.
 
@@ -192,23 +192,23 @@ Errors: `410 code_expired` (unknown challenge), `429 RATE_LIMITED` (before `rese
 
 ### POST `/api/v1/auth/refresh`
 
-Issues a new access token from the refresh cookie and rotates the cookie. **Roles:** cookie holder. Requires `X-Requested-With: cyenetic-admin`.
+Issues a new token pair and revokes the refresh token that was sent. **Roles:** refresh-token holder.
 
-Request: no body. · Response `200` (**bare**): `{ "accessToken": "…", "expiresInSeconds": 900 }`
+Request: `{ "refreshToken": "…" }` · Response `200` (**bare**): `{ "accessToken": "…", "refreshToken": "…", "expiresInSeconds": 900 }`
 
-Errors: `401 UNAUTHENTICATED` (no session; the dashboard treats this as signed out), `403 CSRF`. Sessions expire after 7 days without use.
+Errors: `401` (unknown, revoked or expired token; the dashboard treats this as signed out). Sessions expire after 7 days.
 
 ### POST `/api/v1/auth/logout`
 
-Revokes the current session and clears the cookie. **Roles:** cookie holder. Requires `X-Requested-With: cyenetic-admin`.
+Revokes the session that owns the refresh token. **Roles:** refresh-token holder.
 
-Request: no body. · Response `204`.
+Request: `{ "refreshToken": "…" }` · Response `204`.
 
 ### GET `/api/v1/auth/me`
 
 **Roles:** signed in.
 
-Response `200`: `{ "data": { "id": "uuid", "role": "SUPER_ADMIN", "email": "admin@cyenetic.local", "fullName": "Dev Super Admin" } }`
+Response `200`: `{ "data": { "id": "uuid", "role": "Super Admin", "email": "admin@cyenetic.local", "fullName": "Dev Super Admin" } }`. The live API sends display names (`Super Admin`, `Security Auditor`, `Content Editor`); the dev API sends `SUPER_ADMIN` style names. The dashboard accepts both, and `Client Viewer` is refused.
 
 ### POST `/api/v1/auth/password/forgot`
 
@@ -381,7 +381,7 @@ Paginated `MediaAsset` list, newest first. `bucket` is `PUBLIC` or `PRIVATE`; `q
 
 ### POST `/api/v1/admin/media`
 
-Upload one file as `multipart/form-data` with fields `purpose` and `file`. The real type is detected from the file's bytes; the browser's declared type is ignored.
+Upload one file as `multipart/form-data` with a `file` field and `?purpose=` in the query string (the live API reads it only from the query; the dev API also accepts a form field). The real type is detected from the file's bytes; the browser's declared type is ignored.
 
 | `purpose` | Allowed types | Max size | Bucket |
 | --- | --- | --- | --- |

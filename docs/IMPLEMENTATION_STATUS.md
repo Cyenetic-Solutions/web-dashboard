@@ -5,7 +5,7 @@ These repositories establish the backend/dashboard foundations and one connected
 | Architecture area | Current implementation | Still needed |
 | --- | --- | --- |
 | Runtime and topology | Independent Fastify API and Next.js staff dashboard; Docker and CI | Hosted PostgreSQL/Redis, TLS/proxy, Cloudflare Access and observability provisioning |
-| Identity and RBAC | Server-side JWT/JWKS verification, issuer/audience/expiry/MFA checks; staff roles; explicit loopback demo. Dashboard: email + password then emailed 6-digit code screens, refresh-cookie session restore, forgot/reset password, invite acceptance, permission matrix | API endpoints for password login, SMTP code delivery, refresh rotation, logout, reset and invites ([contract](AUTH_EMAIL_OTP.md)); passkeys |
+| Identity and RBAC | Server-side JWT/JWKS verification, issuer/audience/expiry/MFA checks; staff roles; explicit loopback demo. Dashboard: email + password then emailed 6-digit code screens, in-memory refresh-token rotation, forgot/reset password, invite acceptance, permission matrix | Live API serves these ([contract](AUTH_EMAIL_OTP.md)); still needed: HttpOnly refresh cookie so sessions survive a reload, reset/invite emails with links, passkeys ([API_need_fix.md](../API_need_fix.md)) |
 | Content CMS | Validated create/read/update/archive; optimistic versions; immutable snapshots; draft/review/scheduled/published/archived statuses | Rich TipTap editor, scheduled publication worker, revision comparison/restoration and product-specific forms |
 | Dynamic services | Editable domain and subdomain arrays; published catalog endpoint compatible with frontend | Frontend environment wiring and coordinated schema evolution |
 | Posts | Dashboard: title, subtitle, cover image with alt text, publish date, Markdown editor with toolbar, shortcuts, inline images and safe preview, category, tags, author, SEO fields, featured flag (maximum two published) | Backend schema for the new fields; media upload endpoint; public-site rendering |
@@ -19,7 +19,11 @@ These repositories establish the backend/dashboard foundations and one connected
 | Certificates | No verification or signing endpoint; dashboard issue/revoke screens call the API only | Immutable issued/revoked registry and actual cryptographic verification |
 | Testing/delivery | Unit/API tests, PostgreSQL concurrency/audit tests; dashboard CVSS and editor unit tests and desktop/mobile E2E for sign-in, publishing and every workspace; reusable CI and opt-in deployment | Load tests, full provider integration tests and independent security review |
 
-The local demo uses memory and loses its records on restart. It is visibly marked and cannot bind externally or run in production. Real mode requires the configured database and MFA identity provider; there is no silent in-memory or authentication fallback. Dashboard access tokens stay in tab memory; a reload restores the session only through the API's HttpOnly refresh cookie once that endpoint exists.
+The local demo uses memory and loses its records on restart. It is visibly marked and cannot bind externally or run in production. Real mode requires the configured database and MFA identity provider; there is no silent in-memory or authentication fallback. Dashboard access and refresh tokens stay in tab memory; a reload signs out until the API moves the refresh token to an HttpOnly cookie.
+
+## Live API alignment (2026-11-14)
+
+The dashboard now follows the live API (`Cyenetic-Solutions/web-backend` main) for sign-in, token refresh, error messages, CMS reads, media upload, the audit log and account sessions. Everything the backend still has to change, by module and priority, is in [API_need_fix.md](../API_need_fix.md). Until those land, the CRM, governance (users), report-lead, newsletter and War-Room screens will show validation or "not connected" errors against the live API, and saves of the new post, case-study and team fields are rejected by its older content schema.
 
 ## Local dev API (2026-10-18)
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-14
+
+- Aligned the dashboard with the live API (`Cyenetic-Solutions/web-backend` main, at api.cyenetic.com). Sign-in now works with its contract: no `codeRequired` flag, display role names from `/auth/me`, and a refresh token returned in the body and sent back to `/auth/refresh` and `/auth/logout`. Both tokens stay in tab memory, so a reload signs out until the API moves the refresh token to an HttpOnly cookie. Requests no longer send cookies or `X-Requested-With`, which the live CORS policy would have refused.
+- Errors in the live `{ error, issues }` shape now name the rejected field; case studies stored in the API's older schema open in the editor; media uploads send `?purpose=`; the audit log and the Sessions tab read the live rows (revoked sessions hidden; the integrity check says when the API has no hash chain).
+- Added [API_need_fix.md](API_need_fix.md): the backend changes still needed, including leaked refresh-token and password hashes, an integer overflow that breaks inquiry inserts, cross-origin image blocking, reset/invite emails without links, and the missing CRM, governance and War-Room routes.
+- Production hostname: `compose.yaml` routes `${DASHBOARD_HOST:-admin.cyenetic.com}` through Traefik on `traefik-net`, and the deploy workflow passes `DASHBOARD_HOST` (repository variable, default `admin.cyenetic.com`).
+- The dev API follows the same sign-in contract (refresh token in the body) and also reads the upload purpose from the query string.
+
 ## 2026-11-09
 
 - Security: Next.js 16.4.3 → 16.4.5 (and `eslint-config-next` to match). `npm audit --omit=dev` reports 0 vulnerabilities; 8 moderate development-only findings (`minimatch` via `typescript-eslint`) remain until upstream ships a fix.

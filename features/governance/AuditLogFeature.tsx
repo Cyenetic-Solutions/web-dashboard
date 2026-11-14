@@ -21,7 +21,11 @@ export default function AuditLogFeature() {
   const state = useResource((t, s) => loadAuditLog(t, s, { q }), q);
   async function check() {
     setChain(null);
-    try { const r = await call(verifyChain); setChain(r.valid ? { ok: true, text: `Chain intact — ${r.checked.toLocaleString()} entries verified` } : { ok: false, text: `Chain broken at entry ${r.firstBrokenId ?? 'unknown'}` }); }
+    try {
+      const r = await call(verifyChain);
+      if ('supported' in r) setChain({ ok: false, text: `Integrity check unavailable: ${r.reason}` });
+      else setChain(r.valid ? { ok: true, text: `Chain intact — ${r.checked.toLocaleString()} entries verified` } : { ok: false, text: `Chain broken at entry ${r.firstBrokenId ?? 'unknown'}` });
+    }
     catch (e) { setChain({ ok: false, text: e instanceof Error ? e.message : 'Integrity check failed' }); }
   }
   return <>

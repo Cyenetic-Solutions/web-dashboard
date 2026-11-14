@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contentInput, isImageUrl } from './content.schema';
+import { contentInput, isImageUrl, storedContent } from './content.schema';
 
 const caseStudy = (data: Record<string, unknown>) => ({ kind: 'case-studies', slug: 'fintech-app', status: 'draft', version: 1, data });
 const complete = {
@@ -29,6 +29,12 @@ describe('case study contract', () => {
     const parsed = contentInput.parse({ ...caseStudy(legacy), data: { ...legacy, tagline: 't', company_overview: 'o', requirement_markdown: 'r', requirement_points: ['p'], engagement_items: [{ title: 'Web', description: '' }] } });
     expect(parsed.data).not.toHaveProperty('challenge');
     expect(parsed.data).toMatchObject({ test_types: [], reviews: [], company_size: null });
+  });
+  it('reads a case study stored by the live API schema, but still requires the new fields to save it', () => {
+    const live = { title: 'Old', client_display_name: 'Moniker', is_anonymized: true, sector: 'Finance', engagement: 'e', challenge: 'c', scope: 's', outcome: 'o', findings: { Critical: 1, High: 0, Medium: 0, Low: 0 } };
+    const stored = storedContent.parse(caseStudy(live));
+    expect(stored.data).toMatchObject({ title: 'Old', tagline: '', requirement_points: [] });
+    expect(contentInput.safeParse(caseStudy(live)).success).toBe(false);
   });
 });
 

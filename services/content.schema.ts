@@ -48,7 +48,7 @@ export const engagementItemSchema = z.object({ title: short(120), description: o
 export const reviewSchema = z.object({ name: short(120), url: https }).strict();
 export const companySizes = ['1-10', '11-50', '51-200', '201-1000', '1000+'] as const;
 // Not strict: records saved with the earlier four-part outline load and drop the retired keys on the next save.
-const caseStudy = z.object({
+const caseStudyFields = z.object({
   title: short(160), tagline: optional(200).default(''), cover_image: image,
   client_display_name: short(120), is_anonymized: z.boolean(),
   company_quote: optional(500).default(''), company_overview: optional(2000).default(''),
@@ -59,7 +59,8 @@ const caseStudy = z.object({
   engagement_items: list(engagementItemSchema, 10),
   testimonials: list(testimonialSchema, 4),
   reviews: list(reviewSchema, 4),
-}).superRefine((data, ctx) => {
+});
+const caseStudy = caseStudyFields.superRefine((data, ctx) => {
   const need = (ok: boolean, path: string, message: string) => { if (!ok) ctx.addIssue({ code: 'custom', path: [path], message }); };
   need(data.tagline.length > 0, 'tagline', 'Required');
   need(data.company_overview.length > 0, 'company_overview', 'Required');
@@ -80,13 +81,20 @@ const team = z.object({
 }).strict();
 
 const base = { slug, status: statusSchema, version: z.number().int().nonnegative() };
-export const contentInput = z.discriminatedUnion('kind', [
+const documentSchema = (caseStudyData: typeof caseStudyFields) => z.discriminatedUnion('kind', [
   z.object({ ...base, kind: z.literal('services'), data: service }).strict(),
   z.object({ ...base, kind: z.literal('posts'), data: post }).strict(),
-  z.object({ ...base, kind: z.literal('case-studies'), data: caseStudy }).strict(),
+  z.object({ ...base, kind: z.literal('case-studies'), data: caseStudyData }).strict(),
   z.object({ ...base, kind: z.literal('reports'), data: report }).strict(),
   z.object({ ...base, kind: z.literal('team'), data: team }).strict(),
 ]).refine((item) => item.kind !== 'services' || item.slug === item.data.slug, 'Domain slug must match record slug');
+export const contentInput = documentSchema(caseStudy);
+/**
+ * Stored records as read back from the API. Case studies saved by the live API's older schema have no tagline,
+ * overview or requirement fields; they still load (with empty defaults) so staff can complete them, and the
+ * stricter `contentInput` applies when they are saved.
+ */
+export const storedContent = documentSchema(caseStudyFields);
 /** Validated CMS document; a version of zero creates a record. */
 export type ContentInput = z.infer<typeof contentInput>;
 /** Versioned CMS record and immutable audit snapshot contract. */

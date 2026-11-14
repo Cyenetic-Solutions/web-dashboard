@@ -8,13 +8,13 @@ Adapted from the frontend's reusable CI + main-branch SSH archive deployment. No
 - Architecture, real tests, production dependency audit, and build must pass. Every job installs locked dependencies before running commands.
 - Set repository variable `ENABLE_DEPLOYMENT=true` only after provisioning the target. Configure the `production` environment and any required reviewers.
 - Secrets: `VPS_HOST`, `VPS_PORT`, `VPS_USER`, `VPS_SSH_PRIVATE_KEY`, `VPS_KNOWN_HOSTS`. Use an independently pinned SSH host key; never disable host checking.
-- Variables: `DEPLOY_PATH` (default `/opt/web/dashboard`), `COMPOSE_FILE=compose.yaml`, `COMPOSE_PROJECT_NAME=cyenetic-dashboard`, `APP_IMAGE_NAME=cyenetic-dashboard`. `NEXT_PUBLIC_API_URL` is a public build-time API origin, default https://api.cyenetic.com. Changing it requires rebuilding.
+- Variables: `DASHBOARD_HOST` (default `admin.cyenetic.com`; the Traefik `Host()` rule in `compose.yaml`), `DEPLOY_PATH` (default `/opt/web/dashboard`), `COMPOSE_FILE=compose.yaml`, `COMPOSE_PROJECT_NAME=cyenetic-dashboard`, `APP_IMAGE_NAME=cyenetic-dashboard`. `NEXT_PUBLIC_API_URL` is a public build-time API origin, default https://api.cyenetic.com. Changing it requires rebuilding.
 
 ## VPS prerequisites
 
-The deployment user must own the chosen directory under `/opt/web` and access Docker without sudo. Provision the external `traefik-net` network and existing Traefik TLS resolver. Configure DNS for `admin.cyenetic.com`. No application host port is published. Keep dashboard access behind Cloudflare Access; TLS/HSTS are edge responsibilities.
+The deployment user must own the chosen directory under `/opt/web` and access Docker without sudo. Provision the external `traefik-net` network and existing Traefik TLS resolver. Point DNS for `admin.cyenetic.com` (an A/AAAA record, or a proxied Cloudflare record) at the VPS. Traefik routes that host to the dashboard container on the shared `traefik-net` network and issues its certificate through the `letsencrypt` resolver. No application host port is published. Keep dashboard access behind Cloudflare Access; TLS/HSTS are edge responsibilities.
 
-The image compiles with demo login disabled. The API URL is public configuration, never a secret. Before staff access, the API must serve the email-code sign-in endpoints and have SMTP configured ([contract](AUTH_EMAIL_OTP.md)), and allow this origin with credentialed CORS.
+The image compiles with demo login disabled. The API URL is public configuration, never a secret. Before staff access, the API must serve the email-code sign-in endpoints and have SMTP configured ([contract](AUTH_EMAIL_OTP.md)), and allow this origin in CORS: set the API's `DASHBOARD_ORIGIN=https://admin.cyenetic.com`.
 
 ## Release behavior and recovery
 

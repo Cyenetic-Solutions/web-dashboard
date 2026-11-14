@@ -4,7 +4,7 @@ Short records of choices made while building the full admin design (2026-10). Ea
 
 1. **Next.js App Router stays.** `admin.md` suggests Vite, but AGENTS.md and the existing slice use Next.js 16, React 19 and Tailwind 4. The pages follow admin.md's layout and behaviour on that stack. There are no `app/api` routes and no database access.
 2. **Second factor is an emailed code, not an authenticator app.** This is the owner's request. The API generates and sends the code over SMTP. See [AUTH_EMAIL_OTP.md](AUTH_EMAIL_OTP.md) for the contract and the security trade-off.
-3. **Tokens stay in memory.** The access token lives in React state. Sessions survive a reload only through the API's HttpOnly refresh cookie. The theme choice is the only thing stored in `localStorage`.
+3. **Tokens stay in memory.** The access and refresh tokens live in React state and refs. The live API returns the refresh token in the response body, so a reload signs the person out until the API moves it to an HttpOnly cookie. The theme choice is the only thing stored in `localStorage`.
 4. **Publishing stays Super Admin only.** admin.md lets Content Editors publish, but the current backend does not. The permission matrix (`services/permissions.ts`) mirrors the backend so the UI never offers an action the API will refuse.
 5. **Missing API modules are shown as missing.** A 404 or 501 from an admin endpoint renders "API module not connected". The dashboard never fills the page with sample data.
 6. **Uploads are real or disabled.** Media upload posts multipart data to the API with progress. Report PDF upload on the content form is disabled with an explanation, because no private storage endpoint exists yet.

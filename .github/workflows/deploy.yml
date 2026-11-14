@@ -17,6 +17,7 @@ env:
   COMPOSE_PROJECT_NAME: ${{ vars.COMPOSE_PROJECT_NAME || 'cyenetic-dashboard' }}
   APP_IMAGE_NAME: ${{ vars.APP_IMAGE_NAME || 'cyenetic-dashboard' }}
   NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'https://api.cyenetic.com' }}
+  DASHBOARD_HOST: ${{ vars.DASHBOARD_HOST || 'admin.cyenetic.com' }}
 
 jobs:
   checks:
@@ -101,6 +102,9 @@ jobs:
           case "$NEXT_PUBLIC_API_URL" in
             *[!A-Za-z0-9:/.?\&=_+-]*) echo "NEXT_PUBLIC_API_URL contains unsafe characters" >&2; exit 1 ;;
           esac
+          case "$DASHBOARD_HOST" in
+            ""|.*|*.|*..*|*[!a-z0-9.-]*) echo "DASHBOARD_HOST must be a lowercase hostname such as admin.cyenetic.com" >&2; exit 1 ;;
+          esac
           case "$COMMIT_SHA" in
             *[!0-9a-f]*|"") echo "COMMIT_SHA must be hexadecimal" >&2; exit 1 ;;
           esac
@@ -169,6 +173,7 @@ jobs:
                 'COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME' \
                 'DEPLOYMENT_VERSION=$COMMIT_SHA' \
                 'NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL' \
+                'DASHBOARD_HOST=$DASHBOARD_HOST' \
                 > '$remote_compose_env'
 
               cd '$DEPLOY_PATH'
