@@ -46,6 +46,10 @@ npm audit --omit=dev --audit-level=high
 
 Playwright starts its own server on port 3101 and tests sign-in with the emailed code, publishing, every workspace and the missing-module state on desktop and mobile, against a mocked API boundary. If Chromium is preinstalled elsewhere, set `PLAYWRIGHT_CHROMIUM_PATH`; otherwise run `npx playwright install chromium` once. Backend authorization and PostgreSQL behavior are tested in the API repository.
 
-Every endpoint, request, response and required role is listed in [api_doc.md](api_doc.md).
+Every endpoint, request, response and required role is listed in [api_doc.md](api_doc.md). Backend changes the dashboard still needs from the live API are in [API_need_fix.md](API_need_fix.md).
+
+## Production
+
+Production runs at **https://admin.cyenetic.com** and talks to https://api.cyenetic.com. A push to `main` runs the full CI and, once the repository variable `ENABLE_DEPLOYMENT=true` and the VPS secrets are set, deploys over SSH; Traefik routes `admin.cyenetic.com` to the container (override with the `DASHBOARD_HOST` variable). Details are in [deployment](docs/DEPLOYMENT.md).
 
 See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md), [implementation status](docs/IMPLEMENTATION_STATUS.md), [deployment](docs/DEPLOYMENT.md), [validation record](docs/VALIDATION.md), [architecture](Cyenetic_Master_Architecture.md), and [agent rules](AGENTS.md). Design choices are recorded in [DECISIONS.md](docs/DECISIONS.md).

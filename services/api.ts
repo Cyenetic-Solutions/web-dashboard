@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { contentInput, type ContentInput } from './content.schema';
+import { storedContent, type ContentInput } from './content.schema';
 import { request, ApiError } from './http';
 
 export { ApiError } from './http';
@@ -9,13 +9,14 @@ export const sessionSchema = z.object({ sub: z.string(), role: z.enum(staffRoles
   email: z.string().optional(), name: z.string().optional() });
 export type Session = z.infer<typeof sessionSchema>;
 export type StaffRole = Session['role'];
-/** Maps the API's role enum to the dashboard's display roles; Client Viewer is not a staff session. */
+/** Maps API role names to dashboard roles. The live API sends display names ("Super Admin"); the local dev API sends enum names. Client Viewer is not a staff session. */
 const staffRoleByApiRole: Record<string, StaffRole> = {
   SUPER_ADMIN: 'Super Admin', SECURITY_AUDITOR: 'Security Auditor', CONTENT_EDITOR: 'Content Editor',
+  'Super Admin': 'Super Admin', 'Security Auditor': 'Security Auditor', 'Content Editor': 'Content Editor',
 };
 const apiMeSchema = z.object({ data: z.object({ id: z.string(), role: z.string(),
   email: z.string().optional(), fullName: z.string().optional() }).loose() });
-const recordSchema = z.object({ updatedAt: z.string() }).loose().transform(({ updatedAt, ...input }) => ({ ...contentInput.parse(input), updatedAt }));
+const recordSchema = z.object({ updatedAt: z.string() }).loose().transform(({ updatedAt, ...input }) => ({ ...storedContent.parse(input), updatedAt }));
 export type ContentRecord = z.infer<typeof recordSchema>;
 
 /** Verifies a token with the backend before giving the UI any staff privileges. */

@@ -27,9 +27,21 @@ const entrySchema = z.object({ id: z.string(), actorEmail: z.string().nullable()
   summary: z.string().nullable(), ipAddress: z.string().nullable(), createdAt: z.string(), diff: z.unknown().optional() });
 /** Normalised audit entry; `legacy` marks entries from the CMS-only audit endpoint. */
 export type AuditEntry = z.infer<typeof entrySchema> & { legacy?: boolean };
+/** Live API audit row: actor is the staff user id and `record` is the snapshot written with the change. */
+const liveEntrySchema = z.object({ id: z.string(), actor: z.string(), action: z.string(), record: z.unknown(), createdAt: z.string() });
+const contentRef = z.object({ kind: z.string(), slug: z.string(), version: z.number().optional(), status: z.string().optional() }).loose();
+/** Maps a live API row onto the dashboard entry; content snapshots get a readable kind/slug summary. */
+function fromLive(e: z.infer<typeof liveEntrySchema>): AuditEntry {
+  const ref = contentRef.safeParse(e.record);
+  const summary = ref.success ? `${ref.data.kind}/${ref.data.slug}${ref.data.version === undefined ? '' : ` v${ref.data.version}`}${ref.data.status ? ` · ${ref.data.status}` : ''}` : null;
+  return { id: e.id, actorEmail: e.actor, action: e.action, resourceType: ref.success ? ref.data.kind : (e.action.split(/[._]/)[0] ?? 'unknown'),
+    resourceId: ref.success ? ref.data.slug : null, summary, ipAddress: null, createdAt: e.createdAt, diff: e.record };
+}
+const auditPage = z.union([listOf(entrySchema).transform((page) => page.data),
+  listOf(liveEntrySchema).transform((page) => page.data.map(fromLive))]);
 /** Reads the full audit log, falling back to the current CMS audit endpoint when the full module is not deployed. */
 export async function loadAuditLog(token: string, signal: AbortSignal, filters: { action?: string; resourceType?: string; q?: string }) {
-  try { return { entries: listOf(entrySchema).parse(await request(`/api/v1/admin/audit-logs${query({ ...filters, pageSize: 100 })}`, { token, signal })).data, legacy: false }; }
+  try { return { entries: auditPage.parse(await request(`/api/v1/admin/audit-logs${query({ ...filters, pageSize: 100 })}`, { token, signal })), legacy: false }; }
   catch (error) {
     if (!(error instanceof ApiError) || !error.unavailable) throw error;
     const legacy = await listAudit(token, signal);
@@ -38,15 +50,28 @@ export async function loadAuditLog(token: string, signal: AbortSignal, filters: 
     return { entries, legacy: true };
   }
 }
+const chainSchema = z.union([z.object({ valid: z.boolean(), checked: z.number(), firstBrokenId: z.string().nullable().optional() }),
+  z.object({ supported: z.literal(false), reason: z.string() })]);
+/** Hash-chain check result, or `supported: false` when the API has no hash chain (the live API today). */
+export type ChainResult = z.infer<typeof chainSchema>;
 /** Recomputes the hash chain server-side. */
-export async function verifyChain(token: string) {
-  return dataOf(z.object({ valid: z.boolean(), checked: z.number(), firstBrokenId: z.string().nullable().optional() })).parse(await request('/api/v1/admin/audit-logs/verify-chain', { token })).data;
+export async function verifyChain(token: string): Promise<ChainResult> {
+  return dataOf(chainSchema).parse(await request('/api/v1/admin/audit-logs/verify-chain', { token })).data;
 }
 
 const sessionSchema = z.object({ id: z.string(), userAgent: z.string().nullable(), ipAddress: z.string().nullable(), lastUsedAt: z.string(), createdAt: z.string(), current: z.boolean() });
 export type AccountSession = z.infer<typeof sessionSchema>;
+/**
+ * Live API session row (a bare array; it also carries the refresh-token hash, which is ignored here and must be
+ * removed server-side). A new row is created on every refresh, so `createdAt` is the last use; there is no `current` flag.
+ */
+const liveSessionSchema = z.object({ id: z.string(), userAgent: z.string().nullable(), ipAddress: z.string().nullable(),
+  createdAt: z.string(), expiresAt: z.string(), revokedAt: z.string().nullable() }).loose();
+const sessionList = z.union([dataOf(z.array(sessionSchema)).transform((r) => r.data),
+  z.array(liveSessionSchema).transform((rows) => rows.filter((s) => !s.revokedAt && Date.parse(s.expiresAt) > Date.now())
+    .map((s): AccountSession => ({ id: s.id, userAgent: s.userAgent, ipAddress: s.ipAddress, lastUsedAt: s.createdAt, createdAt: s.createdAt, current: false })))]);
 const account = '/api/v1/admin/account';
-export async function listSessions(token: string, signal: AbortSignal) { return dataOf(z.array(sessionSchema)).parse(await request(`${account}/sessions`, { token, signal })).data; }
+export async function listSessions(token: string, signal: AbortSignal) { return sessionList.parse(await request(`${account}/sessions`, { token, signal })); }
 export async function revokeSession(id: string | null, token: string) { await request(id ? `${account}/sessions/${id}` : `${account}/sessions`, { token, method: 'DELETE' }); }
 export async function updateProfile(fullName: string, token: string) { await request(`${account}/profile`, { token, method: 'PATCH', body: { fullName } }); }
 /** Changes the password; the API revokes other sessions. */

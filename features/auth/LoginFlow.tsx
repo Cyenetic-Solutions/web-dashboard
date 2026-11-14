@@ -2,7 +2,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
-import type { OtpChallenge } from '@/services/auth';
+import type { OtpChallenge, TokenPair } from '@/services/auth';
 import CredentialsStep from './CredentialsStep';
 import OtpStep from './OtpStep';
 
@@ -15,7 +15,7 @@ export default function LoginFlow() {
   const next = params.get('next');
   const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
   useEffect(() => { if (status === 'authenticated') router.replace(target); }, [status, router, target]);
-  async function finish(token: string) { await signIn(token); router.replace(target); }
+  async function finish(tokens: TokenPair) { await signIn(tokens); router.replace(target); }
   return pending
     ? <OtpStep challenge={pending.challenge} email={pending.email} onVerified={finish} onRestart={() => setPending(null)} />
     : <CredentialsStep onChallenge={(challenge, email) => setPending({ challenge, email })} />;

@@ -3,12 +3,12 @@ import { useEffect, useState, type FormEvent } from 'react';
 import Button from '@/components/ui/Button';
 import OtpInput from '@/components/ui/OtpInput';
 import { ApiError } from '@/services/http';
-import { otpCode, resendOtp, verifyOtp, type OtpChallenge } from '@/services/auth';
+import { otpCode, resendOtp, verifyOtp, type OtpChallenge, type TokenPair } from '@/services/auth';
 
 function clock(seconds: number) { return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`; }
 
 /** Factor 2: the 6-digit code emailed through the API's SMTP mail server. Expiry and resend cooldown come from the API. */
-export default function OtpStep({ challenge, email, onVerified, onRestart }: { challenge: OtpChallenge; email: string; onVerified: (accessToken: string) => Promise<void>; onRestart: () => void }) {
+export default function OtpStep({ challenge, email, onVerified, onRestart }: { challenge: OtpChallenge; email: string; onVerified: (tokens: TokenPair) => Promise<void>; onRestart: () => void }) {
   const [current, setCurrent] = useState(challenge);
   const [issuedAt, setIssuedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
@@ -25,7 +25,7 @@ export default function OtpStep({ challenge, email, onVerified, onRestart }: { c
     const parsed = otpCode.safeParse(value);
     if (!parsed.success) { setMessage({ tone: 'error', text: parsed.error.issues[0]?.message ?? 'Invalid code' }); return; }
     setPending(true); setMessage(null);
-    try { const { accessToken } = await verifyOtp(current.otpToken, parsed.data); await onVerified(accessToken); }
+    try { await onVerified(await verifyOtp(current.otpToken, parsed.data)); }
     catch (err) {
       setCode('');
       if (err instanceof ApiError && err.status === 410) setMessage({ tone: 'error', text: 'This code has expired. Request a new one.' });
