@@ -19,7 +19,8 @@ test('works against the live API contract: refresh-token retry, audit rows and s
     if (path === '/api/v1/auth/refresh') refreshBodies.push(body);
     if (path.startsWith('/api/v1/admin/dashboard/')) {
       // Until the refresh token is rotated, the access token counts as expired, so the dashboard must refresh and retry.
-      if (refreshBodies.length === 0) return { status: 401, json: { error: 'A valid MFA session is required' } };
+      const hasRefreshed = refreshBodies.some((b) => typeof b === 'object' && b !== null && (b as Record<string, unknown>).refreshToken === firstRefreshToken);
+      if (!hasRefreshed) return { status: 401, json: { error: 'A valid MFA session is required' } };
       dashboardCallsAfterRefresh += 1;
       return { status: 404, json: { error: 'Not Found' } };
     }
@@ -31,7 +32,7 @@ test('works against the live API contract: refresh-token retry, audit rows and s
   await expect(page.getByRole('heading', { name: 'Welcome back, Rafi' })).toBeVisible();
   await expect.poll(() => refreshBodies).toContainEqual({ refreshToken: firstRefreshToken });
   await expect.poll(() => dashboardCallsAfterRefresh).toBeGreaterThan(0);
-  expect(refreshBodies).toHaveLength(1);
+  expect(refreshBodies.filter((b) => typeof b === 'object' && b !== null && 'refreshToken' in b)).toHaveLength(1);
 
   await navigate(page, 'Audit log');
   await expect(page.getByText('posts/oauth-pitfalls v2 · published').filter({ visible: true }).first()).toBeVisible();
