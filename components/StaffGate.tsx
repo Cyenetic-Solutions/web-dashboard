@@ -7,6 +7,13 @@ import { LinkButton } from './ui/Button';
 /** Presentation gate only; every private API operation independently verifies identity and role. */
 export default function StaffGate({ children, permission }: { children: ReactNode; permission?: Permission }) {
   const { status, can } = useAuth();
+  if (status === 'loading') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas">
+        <div role="status" aria-label="Loading" className="h-12 w-12 animate-spin rounded-full border-4 border-surface-2 border-t-[#E50914]" />
+      </div>
+    );
+  }
   if (status !== 'authenticated') return <section className="mx-auto mt-[12vh] max-w-lg border border-line bg-surface p-8">
     <p className="cye-label text-accent-strong">Restricted</p><h1 className="mt-2 font-display text-3xl uppercase">Staff session required</h1>
     <p className="mt-3 text-sm text-muted">Sign in with your staff email, password and the one-time code we email you.</p>

@@ -34,16 +34,16 @@ export class ApiError extends Error {
   get unavailable() { return this.status === 404 || this.status === 501; }
 }
 
-/** Request options. Credentials stay `omit`: the live API does not allow credentialed CORS. */
+/** Request options. Credentials default to `include` for secure HttpOnly cookie session handling. */
 export interface RequestOptions { token?: string | null; method?: string; body?: unknown; signal?: AbortSignal; credentials?: RequestCredentials; headers?: Record<string, string> }
 
 /** Sends a JSON request to the API and returns the unvalidated payload; callers parse it with Zod. */
 export async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
-  const { token, method = 'GET', body, signal, credentials = 'omit', headers = {} } = options;
+  const { token, method = 'GET', body, signal, credentials = 'include', headers = {} } = options;
   let response: Response;
   try {
     response = await fetch(`${apiBase}${path}`, { method, signal, cache: 'no-store', credentials,
-      headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
+      headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), 'X-Requested-With': 'cyenetic-admin', ...headers },
       body: body === undefined ? undefined : JSON.stringify(body) });
   } catch (error) {
     if (signal?.aborted) throw error;
@@ -89,7 +89,7 @@ export function query(params: Record<string, string | number | boolean | undefin
 /** Downloads an authorized file (e.g. CSV export, audited server-side) as a Blob. */
 export async function requestBlob(path: string, token: string) {
   let response: Response;
-  try { response = await fetch(`${apiBase}${path}`, { cache: 'no-store', credentials: 'omit', headers: { Authorization: `Bearer ${token}` } }); }
+  try { response = await fetch(`${apiBase}${path}`, { cache: 'no-store', credentials: 'include', headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'cyenetic-admin' } }); }
   catch { throw new ApiError(0, 'The API could not be reached.', 'NETWORK'); }
   if (!response.ok) throw new ApiError(response.status, response.status === 404 ? 'Export is not available on the connected API' : 'Export failed');
   return response.blob();

@@ -1,7 +1,7 @@
 // /api/v1/auth: email + password, then a 6-digit code emailed over SMTP (docs/AUTH_EMAIL_OTP.md).
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { checkPassword, clientIp, displayRole, hashPassword, maskEmail, newToken, sha256 } from '../lib/auth.mjs';
-import { HttpError, badRequest } from '../lib/http.mjs';
+import { HttpError, badRequest, parseCookies } from '../lib/http.mjs';
 import { appendAudit } from '../lib/store.mjs';
 
 const CODE_TTL = 10 * 60_000, RESEND_AFTER = 30_000, MAX_ATTEMPTS = 5;
@@ -78,27 +78,34 @@ export function authRoutes(router, { store, config, tokens, mailer }) {
     store.data.sessions.push(session);
     user.lastLoginAt = now;
     audit(ctx, user, 'LOGIN_SUCCESS', 'Signed in with email code');
+    ctx.res.setHeader('Set-Cookie', `cyenetic_refresh=${encodeURIComponent(refresh.token)}; Path=/api/v1/auth; HttpOnly; SameSite=Strict; Max-Age=${REFRESH_TTL_DAYS * 86400}`);
     return { accessToken: tokens.issue(session), refreshToken: refresh.token, expiresInSeconds: tokens.ttlSeconds };
   });
 
   router.post('/api/v1/auth/refresh', async (ctx) => {
-    const { refreshToken } = await ctx.json();
-    const session = sessionFor(refreshToken);
+    const body = await ctx.json().catch(() => ({}));
+    const cookies = parseCookies(ctx.req.headers.cookie);
+    const token = cookies.cyenetic_refresh || body.refreshToken;
+    const session = sessionFor(token);
     const fresh = session && Date.now() - Date.parse(session.lastUsedAt) < REFRESH_TTL_DAYS * 86400_000;
     const user = session && store.data.users.find((u) => u.id === session.userId && u.status === 'ACTIVE');
     if (!fresh || !user) throw new HttpError(401, 'UNAUTHENTICATED', 'No session');
     const rotated = newToken();
     session.refreshHash = rotated.hash; session.lastUsedAt = new Date().toISOString(); store.save();
+    ctx.res.setHeader('Set-Cookie', `cyenetic_refresh=${encodeURIComponent(rotated.token)}; Path=/api/v1/auth; HttpOnly; SameSite=Strict; Max-Age=${REFRESH_TTL_DAYS * 86400}`);
     return { accessToken: tokens.issue(session), refreshToken: rotated.token, expiresInSeconds: tokens.ttlSeconds };
   });
 
   router.post('/api/v1/auth/logout', async (ctx) => {
-    const { refreshToken } = await ctx.json();
-    const session = sessionFor(refreshToken);
+    const body = await ctx.json().catch(() => ({}));
+    const cookies = parseCookies(ctx.req.headers.cookie);
+    const token = cookies.cyenetic_refresh || body.refreshToken;
+    const session = sessionFor(token);
     if (session) {
       session.revokedAt = new Date().toISOString(); tokens.revokeSession(session.id);
       audit(ctx, store.data.users.find((u) => u.id === session.userId), 'LOGOUT', 'Signed out');
     }
+    ctx.res.setHeader('Set-Cookie', 'cyenetic_refresh=; Path=/api/v1/auth; HttpOnly; SameSite=Strict; Max-Age=0');
     ctx.res.statusCode = 204;
     return undefined;
   });

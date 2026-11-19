@@ -37,13 +37,13 @@ export async function verifyOtp(otpToken: string, code: string): Promise<TokenPa
 export async function resendOtp(otpToken: string) {
   return toChallenge(apiChallengeSchema.parse(await request('/api/v1/auth/login/resend', { method: 'POST', body: { challengeId: otpToken } })));
 }
-/** Exchanges the current refresh token for a new pair; the old refresh token stops working. */
-export async function refreshSession(refreshToken: string): Promise<TokenPair> {
-  return tokenSchema.parse(await request('/api/v1/auth/refresh', { method: 'POST', body: { refreshToken } }));
+/** Exchanges the current refresh token (or HttpOnly cookie) for a new pair; the old refresh token stops working. */
+export async function refreshSession(refreshToken?: string | null): Promise<TokenPair> {
+  return tokenSchema.parse(await request('/api/v1/auth/refresh', { method: 'POST', body: refreshToken ? { refreshToken } : {} }));
 }
-/** Revokes the server session that owns this refresh token. */
-export async function logout(refreshToken: string) {
-  await request('/api/v1/auth/logout', { method: 'POST', body: { refreshToken } });
+/** Revokes the server session that owns this refresh token and clears the HttpOnly cookie. */
+export async function logout(refreshToken?: string | null) {
+  await request('/api/v1/auth/logout', { method: 'POST', body: refreshToken ? { refreshToken } : {} });
 }
 /** Always accepted by the API to avoid account enumeration; a reset link is emailed when the account exists. */
 export async function forgotPassword(email: string) {
