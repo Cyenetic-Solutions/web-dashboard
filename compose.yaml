@@ -10,14 +10,14 @@ services:
     env_file:
       - .env.production
     networks:
-      - traefik-net
+      - traefik-proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik-net"
+      - "traefik.docker.network=traefik-proxy"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.rule=Host(`${DASHBOARD_HOST:-admin.cyenetic.com}`)"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.entrypoints=websecure"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.tls.certresolver=letsencrypt"
       - "traefik.http.services.${COMPOSE_PROJECT_NAME:-cyenetic-dashboard}.loadbalancer.server.port=3000"
 networks:
-  traefik-net:
+  traefik-proxy:
     external: true
