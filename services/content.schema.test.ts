@@ -45,9 +45,10 @@ describe('case study contract', () => {
       ],
     };
     const stored = storedContent.parse(caseStudy(legacyPayload));
+    if (stored.kind !== 'case-studies') throw new Error('Expected case study');
     expect(Array.isArray(stored.data.requirement_points)).toBe(true);
     expect(stored.data.requirement_points).toHaveLength(3);
-    expect(stored.data.testimonials[0].photo).toEqual({ url: 'https://example.com/photo.png', alt: 'Testimonial photo' });
+    expect(stored.data.testimonials[0]?.photo).toEqual({ url: 'https://example.com/photo.png', alt: 'Testimonial photo' });
   });
 });
 
