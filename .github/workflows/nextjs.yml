@@ -75,7 +75,10 @@ jobs:
       - name: Validate Compose configuration
         env:
           COMPOSE_PROJECT_NAME: cyenetic-dashboard
-        run: docker compose config --quiet
+        run: |
+          touch .env.production
+          trap 'rm -f .env.production' EXIT
+          docker compose config --quiet
       - name: Build and exercise production container
         run: bash scripts/check-container.sh
   build:
