@@ -23,7 +23,7 @@ flock -n 9 || { echo 'Another deployment is already running' >&2; exit 1; }
 }
 docker info >/dev/null
 docker compose version >/dev/null
-docker network inspect traefik-net >/dev/null
+docker network inspect traefik-proxy >/dev/null
 release_dir="$DEPLOY_PATH/releases/$release_id"
 mkdir -p "$DEPLOY_PATH/releases"
 mkdir "$release_dir"
