@@ -24,6 +24,9 @@ flock -n 9 || { echo 'Another deployment is already running' >&2; exit 1; }
 docker info >/dev/null
 docker compose version >/dev/null
 docker network inspect traefik-proxy >/dev/null
+[[ -r "$DEPLOY_PATH/.env.production" ]] || {
+  echo 'Runtime .env.production must exist and be readable by the deploy user' >&2; exit 1;
+}
 release_dir="$DEPLOY_PATH/releases/$release_id"
 mkdir -p "$DEPLOY_PATH/releases"
 mkdir "$release_dir"
@@ -31,6 +34,7 @@ tar --no-same-owner --same-permissions -xzf "$archive" -C "$release_dir"
 [[ -f "$release_dir/$COMPOSE_FILE" && -f "$release_dir/scripts/rollout.sh" ]] || {
   echo 'Release archive is missing deployment files' >&2; exit 1;
 }
+ln -s "$DEPLOY_PATH/.env.production" "$release_dir/.env.production"
 # The existing root and dotenv files stay intact. Runtime values are never baked into images.
 compose_args=(--project-name "$COMPOSE_PROJECT_NAME")
 for file in "$DEPLOY_PATH/.env" "$DEPLOY_PATH/.env.production"; do
