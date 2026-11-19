@@ -62,14 +62,16 @@ export async function verifyChain(token: string): Promise<ChainResult> {
 const sessionSchema = z.object({ id: z.string(), userAgent: z.string().nullable(), ipAddress: z.string().nullable(), lastUsedAt: z.string(), createdAt: z.string(), current: z.boolean() });
 export type AccountSession = z.infer<typeof sessionSchema>;
 /**
- * Live API session row (a bare array; it also carries the refresh-token hash, which is ignored here and must be
- * removed server-side). A new row is created on every refresh, so `createdAt` is the last use; there is no `current` flag.
+ * Live API session row (either a bare array of SessionView or an array with DB session fields).
  */
-const liveSessionSchema = z.object({ id: z.string(), userAgent: z.string().nullable(), ipAddress: z.string().nullable(),
-  createdAt: z.string(), expiresAt: z.string(), revokedAt: z.string().nullable() }).loose();
+const liveSessionSchema = z.object({
+  id: z.string(), userAgent: z.string().nullable().optional(), ipAddress: z.string().nullable().optional(),
+  createdAt: z.string(), expiresAt: z.string().optional(), lastUsedAt: z.string().optional(),
+  revokedAt: z.string().nullable().optional(), current: z.boolean().optional(),
+}).loose();
 const sessionList = z.union([dataOf(z.array(sessionSchema)).transform((r) => r.data),
-  z.array(liveSessionSchema).transform((rows) => rows.filter((s) => !s.revokedAt && Date.parse(s.expiresAt) > Date.now())
-    .map((s): AccountSession => ({ id: s.id, userAgent: s.userAgent, ipAddress: s.ipAddress, lastUsedAt: s.createdAt, createdAt: s.createdAt, current: false })))]);
+  z.array(liveSessionSchema).transform((rows) => rows.filter((s) => !s.revokedAt && (!s.expiresAt || Date.parse(s.expiresAt) > Date.now()))
+    .map((s): AccountSession => ({ id: s.id, userAgent: s.userAgent ?? null, ipAddress: s.ipAddress ?? null, lastUsedAt: s.lastUsedAt ?? s.createdAt, createdAt: s.createdAt, current: Boolean(s.current) })))]);
 const account = '/api/v1/admin/account';
 export async function listSessions(token: string, signal: AbortSignal) { return sessionList.parse(await request(`${account}/sessions`, { token, signal })); }
 export async function revokeSession(id: string | null, token: string) { await request(id ? `${account}/sessions/${id}` : `${account}/sessions`, { token, method: 'DELETE' }); }
