@@ -36,6 +36,19 @@ describe('case study contract', () => {
     expect(stored.data).toMatchObject({ title: 'Old', tagline: '', requirement_points: [] });
     expect(contentInput.safeParse(caseStudy(live)).success).toBe(false);
   });
+  it('gracefully handles legacy number requirement_points and string testimonial photos', () => {
+    const legacyPayload = {
+      ...complete,
+      requirement_points: 3,
+      testimonials: [
+        { quote: 'Good job', name: 'A. Rahman', designation: 'CISO', company: 'Client', photo: 'https://example.com/photo.png' },
+      ],
+    };
+    const stored = storedContent.parse(caseStudy(legacyPayload));
+    expect(Array.isArray(stored.data.requirement_points)).toBe(true);
+    expect(stored.data.requirement_points).toHaveLength(3);
+    expect(stored.data.testimonials[0].photo).toEqual({ url: 'https://example.com/photo.png', alt: 'Testimonial photo' });
+  });
 });
 
 describe('post contract', () => {

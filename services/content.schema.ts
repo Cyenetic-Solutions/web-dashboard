@@ -40,8 +40,12 @@ const post = z.object({
   seo_title: optional(70).default(''), seo_description: optional(160).default(''),
 }).strict();
 
+const testimonialPhoto = z.preprocess(
+  (value) => (typeof value === 'string' ? { url: value, alt: 'Testimonial photo' } : value),
+  image,
+);
 /** Case-study testimonial shown as a person quote. */
-export const testimonialSchema = z.object({ quote: short(500), name: short(120), designation: short(120), company: optional(120), photo: image }).strict();
+export const testimonialSchema = z.object({ quote: short(500), name: short(120), designation: short(120), company: optional(120), photo: testimonialPhoto }).strict();
 /** Engagement item such as "Web Application Pentesting". */
 export const engagementItemSchema = z.object({ title: short(120), description: optional(300) }).strict();
 /** External review or reference link. */
@@ -55,7 +59,10 @@ const caseStudyFields = z.object({
   company_address: optional(200).default(''), company_size: z.enum(companySizes).nullable().default(null),
   test_types: list(short(60), 12),
   requirement_markdown: optional(10000).default(''),
-  requirement_points: list(short(300), 10),
+  requirement_points: z.preprocess(
+    (value) => (typeof value === 'number' ? Array.from({ length: value }, (_, i) => `Point ${i + 1}`) : value),
+    list(short(300), 10),
+  ),
   engagement_items: list(engagementItemSchema, 10),
   testimonials: list(testimonialSchema, 4),
   reviews: list(reviewSchema, 4),
